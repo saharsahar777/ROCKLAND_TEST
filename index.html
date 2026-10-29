@@ -7,7 +7,6 @@
   <style>
     :root {
       --cell-size: 64px;
-      --grid-line: rgba(18, 28, 24, 0.12);
       --pad-size: 54px;
       --pad-gap: 5px;
     }
@@ -28,8 +27,25 @@
       width: var(--cell-size); height: var(--cell-size);
       background-size: 100% 100%; background-position: center; background-repeat: no-repeat;
       image-rendering: pixelated;
-      border-right: 1px solid var(--grid-line); border-bottom: 1px solid var(--grid-line);
     }
+
+    #objects-layer {
+      position: absolute; left: 50%; top: 50%; display: grid;
+      align-content: start; justify-content: start; will-change: transform;
+      transform-origin: center; pointer-events: none;
+    }
+    .object-cell {
+      position: relative; width: var(--cell-size); height: var(--cell-size);
+      pointer-events: none;
+    }
+    .world-object {
+      position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+      image-rendering: pixelated; object-fit: contain; max-width: none;
+      pointer-events: none; user-select: none; -webkit-user-drag: none;
+    }
+    .world-object.tree-1 { width: 64px; height: 128px; }
+    .world-object.tree-2 { width: 128px; height: 64px; }
+    .world-object.rock { width: 64px; height: 64px; }
 
     #actors-layer { position: absolute; inset: 0; pointer-events: none; }
     #player {
@@ -68,6 +84,7 @@
 <body>
   <main id="game" aria-label="Игровой мир">
     <div id="terrain-layer" aria-hidden="true"></div>
+    <div id="objects-layer" aria-hidden="true"></div>
     <div id="actors-layer" aria-hidden="true">
       <img id="player" src="assets/player/GG_5.png" alt="" draggable="false">
     </div>
@@ -81,6 +98,7 @@
 
   <script>
     const terrainLayer = document.getElementById('terrain-layer');
+    const objectsLayer = document.getElementById('objects-layer');
     const player = document.getElementById('player');
 
     // Текстуры земли: bg_1 — земля, bg_2 — трава, bg_3 — каменистая почва.
@@ -89,6 +107,21 @@
       2: 'assets/bg_2.png',
       3: 'assets/bg_3.png'
     };
+
+    // Отдельная таблица объектов синхронизирована с таблицей ландшафта.
+    const OBJECT_SPRITES = {
+      tree1: 'assets/tree_1.png',
+      tree2: 'assets/tree_2.png',
+      rock1: 'assets/rock_1.png',
+      rock2: 'assets/rock_2.png'
+    };
+    let worldMap = [];
+    let objectMap = [];
+    let worldColumns = 0;
+    let worldRows = 0;
+    let worldPixelWidth = 0;
+    let worldPixelHeight = 0;
+    const PLAYER_COLLISION_SIZE = 40;
 
     // Имена спрайтов: 1–2 вверх, 3–4 вправо, 5–6 вниз, 7–8 влево.
     const PLAYER_SPRITES = {
@@ -132,32 +165,161 @@
       }
     }
 
+    // Базовые веса типов местности: 1 — почва, 2 — трава, 3 — каменистая земля.
+    // Ландшафт генерируется блоками 2×2 клетки (четыре клетки одного типа).
+    // Переходы: трава ↔ почва ↔ камни. Трава и камни напрямую не соприкасаются сторонами.
+    const TILE_WEIGHTS = { 1: 30, 2: 10, 3: 60 };
+    const BLOCK_SIZE = 2;
+
+    function canNeighbor(tile, neighbor) {
+      if (neighbor == null) return true;
+      // Трава (2) не соприкасается с камнями (3); почва (1) — переходный тип.
+      return !((tile === 2 && neighbor === 3) || (tile === 3 && neighbor === 2));
+    }
+
+    function chooseWeightedBlock(leftTile, upperTile) {
+      const allowed = [1, 2, 3].filter((tile) =>
+        canNeighbor(tile, leftTile) && canNeighbor(tile, upperTile)
+      );
+      const totalWeight = allowed.reduce((sum, tile) => sum + TILE_WEIGHTS[tile], 0);
+      let roll = Math.random() * totalWeight;
+      for (const tile of allowed) {
+        roll -= TILE_WEIGHTS[tile];
+        if (roll < 0) return tile;
+      }
+      return allowed[allowed.length - 1] ?? 1;
+    }
+
     function generateWorld() {
       const cellSize = parseFloat(getComputedStyle(document.documentElement)
         .getPropertyValue('--cell-size')) || 64;
       const columns = Math.max(41, (Math.ceil(window.innerWidth * 3 / cellSize) | 1));
       const rows = Math.max(41, (Math.ceil(window.innerHeight * 3 / cellSize) | 1));
-      const fragment = document.createDocumentFragment();
+      const terrainFragment = document.createDocumentFragment();
+      const objectFragment = document.createDocumentFragment();
+      const blockColumns = Math.ceil(columns / BLOCK_SIZE);
+      const blockRows = Math.ceil(rows / BLOCK_SIZE);
+      const blockMap = Array.from({ length: blockRows }, () => Array(blockColumns).fill(0));
+      worldMap = Array.from({ length: rows }, () => Array(columns).fill(0));
+      objectMap = Array.from({ length: rows }, () => Array(columns).fill(null));
+      worldColumns = columns;
+      worldRows = rows;
+      worldPixelWidth = columns * cellSize;
+      worldPixelHeight = rows * cellSize;
 
-      for (let i = 0; i < columns * rows; i++) {
-        const tileId = Math.floor(Math.random() * 3) + 1;
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.style.backgroundImage = `url("${TILE_TEXTURES[tileId]}")`;
-        fragment.appendChild(cell);
+      // Сначала генерируем ландшафт блоками 2×2.
+      for (let blockRow = 0; blockRow < blockRows; blockRow++) {
+        for (let blockCol = 0; blockCol < blockColumns; blockCol++) {
+          const leftTile = blockCol > 0 ? blockMap[blockRow][blockCol - 1] : null;
+          const upperTile = blockRow > 0 ? blockMap[blockRow - 1][blockCol] : null;
+          const tileId = chooseWeightedBlock(leftTile, upperTile);
+          blockMap[blockRow][blockCol] = tileId;
+          for (let dy = 0; dy < BLOCK_SIZE; dy++) {
+            for (let dx = 0; dx < BLOCK_SIZE; dx++) {
+              const row = blockRow * BLOCK_SIZE + dy;
+              const col = blockCol * BLOCK_SIZE + dx;
+              if (row < rows && col < columns) worldMap[row][col] = tileId;
+            }
+          }
+        }
       }
 
-      terrainLayer.replaceChildren(fragment);
-      terrainLayer.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
-      terrainLayer.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
-      terrainLayer.style.width = `${columns * cellSize}px`;
-      terrainLayer.style.height = `${rows * cellSize}px`;
+      // Затем создаём отдельную таблицу объектов по значениям таблицы ландшафта.
+      // Трава: дерево в каждой клетке. Каменистая земля: камень с вероятностью 20%.
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < columns; col++) {
+          const tileId = worldMap[row][col];
+          const terrainCell = document.createElement('div');
+          terrainCell.className = 'cell';
+          terrainCell.dataset.tile = String(tileId);
+          terrainCell.style.backgroundImage = `url("${TILE_TEXTURES[tileId]}")`;
+          terrainFragment.appendChild(terrainCell);
+
+          let objectType = null;
+          if (tileId === 2) {
+            objectType = Math.random() < 0.5 ? 'tree1' : 'tree2';
+          } else if (tileId === 3 && Math.random() < 0.20) {
+            objectType = Math.random() < 0.5 ? 'rock1' : 'rock2';
+          }
+          objectMap[row][col] = objectType;
+
+          const objectCell = document.createElement('div');
+          objectCell.className = 'object-cell';
+          objectCell.dataset.row = String(row);
+          objectCell.dataset.col = String(col);
+          if (objectType) {
+            const sprite = document.createElement('img');
+            sprite.className = `world-object ${objectType === 'tree1' ? 'tree-1' : objectType === 'tree2' ? 'tree-2' : 'rock'}`;
+            sprite.src = OBJECT_SPRITES[objectType];
+            sprite.alt = '';
+            sprite.draggable = false;
+            sprite.onerror = () => console.error(`Не удалось загрузить спрайт объекта: ${sprite.src}`);
+            objectCell.appendChild(sprite);
+          }
+          objectFragment.appendChild(objectCell);
+        }
+      }
+
+      terrainLayer.replaceChildren(terrainFragment);
+      objectsLayer.replaceChildren(objectFragment);
+      for (const layer of [terrainLayer, objectsLayer]) {
+        layer.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
+        layer.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
+        layer.style.width = `${worldPixelWidth}px`;
+        layer.style.height = `${worldPixelHeight}px`;
+      }
+
+      // Ищем ближайшую свободную клетку для начального появления игрока.
+      const centerRow = Math.floor(rows / 2);
+      const centerCol = Math.floor(columns / 2);
+      let spawn = null;
+      for (let radius = 0; radius < Math.max(rows, columns) && !spawn; radius++) {
+        for (let row = Math.max(0, centerRow - radius); row <= Math.min(rows - 1, centerRow + radius) && !spawn; row++) {
+          for (let col = Math.max(0, centerCol - radius); col <= Math.min(columns - 1, centerCol + radius); col++) {
+            if (objectMap[row][col] === null) { spawn = { row, col }; break; }
+          }
+        }
+      }
+      if (spawn) {
+        worldX = (spawn.col + 0.5) * cellSize - worldPixelWidth / 2;
+        worldY = (spawn.row + 0.5) * cellSize - worldPixelHeight / 2;
+      } else {
+        worldX = 0;
+        worldY = 0;
+      }
+      velocityX = 0;
+      velocityY = 0;
       updateCamera();
     }
 
     function updateCamera() {
-      terrainLayer.style.transform =
-        `translate(calc(-50% - ${worldX}px), calc(-50% - ${worldY}px))`;
+      const transform = `translate(calc(-50% - ${worldX}px), calc(-50% - ${worldY}px))`;
+      terrainLayer.style.transform = transform;
+      objectsLayer.style.transform = transform;
+    }
+
+    // Коллизия занимает всю клетку 64×64, где есть дерево или камень.
+    // Проверяем движение по осям отдельно, чтобы игрок не проскальзывал между объектами.
+    function collidesAt(nextX, nextY) {
+      const cellSize = 64;
+      const half = PLAYER_COLLISION_SIZE / 2;
+      const centerX = worldPixelWidth / 2 + nextX;
+      const centerY = worldPixelHeight / 2 + nextY;
+      const left = centerX - half;
+      const right = centerX + half;
+      const top = centerY - half;
+      const bottom = centerY + half;
+      const minCol = Math.floor(left / cellSize);
+      const maxCol = Math.floor((right - 0.001) / cellSize);
+      const minRow = Math.floor(top / cellSize);
+      const maxRow = Math.floor((bottom - 0.001) / cellSize);
+      for (let row = minRow; row <= maxRow; row++) {
+        for (let col = minCol; col <= maxCol; col++) {
+          if (row < 0 || col < 0 || row >= worldRows || col >= worldColumns) return true;
+          if (objectMap[row]?.[col]) return true;
+        }
+      }
+      return false;
     }
 
     function setDirection(direction, isDown) {
@@ -235,8 +397,12 @@
         velocityY = velocityY / speed * MAX_SPEED;
       }
 
-      worldX += velocityX * dt;
-      worldY += velocityY * dt;
+      const nextX = worldX + velocityX * dt;
+      const nextY = worldY + velocityY * dt;
+      if (!collidesAt(nextX, worldY)) worldX = nextX;
+      else velocityX = 0;
+      if (!collidesAt(worldX, nextY)) worldY = nextY;
+      else velocityY = 0;
 
       if (pressed.size === 0 && Math.hypot(velocityX, velocityY) < 2) {
         velocityX = 0;
@@ -261,7 +427,7 @@
     }
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat()].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
