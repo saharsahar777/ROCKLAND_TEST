@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Rock Land — прототип</title>
   <style>
+    @font-face {
+      font-family: 'PressStart2P';
+      src: url('assets/PressStart2P-Regular.ttf') format('truetype');
+      font-display: swap;
+    }
+
     :root {
       --cell-size: 64px;
       --pad-size: 54px;
@@ -14,7 +20,7 @@
     * { box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; margin: 0; overflow: hidden;
-      background: #26362d; font-family: Arial, sans-serif; touch-action: none;
+      background: #26362d; font-family: 'PressStart2P', monospace; touch-action: none;
     }
     #game { position: fixed; inset: 0; overflow: hidden; background: #26362d; }
 
@@ -85,7 +91,7 @@
       width: 48px; height: 48px; border: 2px solid #aaa; border-radius: 4px;
       background: rgba(125,125,125,.88); color: #fff; display: flex;
       align-items: center; justify-content: center; position: relative;
-      font: 12px Arial,sans-serif; text-shadow: 0 1px 2px #222;
+      font: 8px 'PressStart2P', monospace; text-shadow: 0 1px 2px #222;
       user-select: none; -webkit-tap-highlight-color: transparent;
     }
     .item-slot.selected { border: 3px solid #f2d45c; background: rgba(155,155,155,.96); }
@@ -112,6 +118,30 @@
       position: absolute; z-index: 6; top: max(14px, env(safe-area-inset-top));
       left: 50%; transform: translateX(-50%); color: white; font: 13px Arial,sans-serif;
       background: rgba(0,0,0,.45); padding: 6px 9px; border-radius: 4px; white-space: nowrap;
+    }
+    /* Fallout-подобная лента системных сообщений внизу экрана. */
+    #message-log {
+      position: absolute; z-index: 9; left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+      transform: translateX(-50%); width: min(620px, calc(100% - 150px));
+      display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 7px;
+      pointer-events: none;
+    }
+    .game-message {
+      max-width: 100%; padding: 9px 12px; color: #eee;
+      background: rgba(8, 10, 9, .86); border: 2px solid #777;
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.7), 0 3px 8px rgba(0,0,0,.45);
+      font: 9px/1.7 'PressStart2P', monospace; text-shadow: 1px 1px #000;
+      overflow-wrap: anywhere; animation: message-in .12s ease-out;
+    }
+    .game-message.damage { color: #ff5555; border-color: #a43b3b; }
+    .game-message.resource { color: #75e078; border-color: #438a49; }
+    @keyframes message-in {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 480px) {
+      #message-log { width: calc(100% - 120px); bottom: 90px; }
+      .game-message { font-size: 7px; padding: 7px 8px; }
     }
     #inventory-overlay {
       display: none; position: absolute; z-index: 20; inset: 0; background: rgba(0,0,0,.55);
@@ -154,6 +184,7 @@
     <div id="quick-slots" aria-label="Быстрые слоты"></div>
     <div id="health-panel">Здоровье: <span id="health-value">100</span>/100</div>
     <button id="inventory-open" type="button" aria-label="Открыть инвентарь">▦</button>
+    <div id="message-log" aria-live="polite" aria-atomic="false"></div>
     <button id="action-button" type="button" aria-label="Ударить">
       <span id="action-label">✊</span><span id="action-feedback">💢</span>
     </button>
@@ -183,17 +214,34 @@
     const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png' };
     // Поддержка будущих инструментов: прочности нет, инструмент не изнашивается.
     const TOOL_DEFINITIONS = {
-      stone_axe: { name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: '🪓' },
-      stone_pickaxe: { name: 'Каменная кирка', toolFor: 'rock', tier: 1, yield: 1, icon: '⛏️' },
-      iron_axe: { name: 'Железный топор', toolFor: 'tree', tier: 2, yield: 2, icon: '🪓' },
-      iron_pickaxe: { name: 'Железная кирка', toolFor: 'rock', tier: 2, yield: 2, icon: '⛏️' }
+      stone_axe: { id: 'stone_axe', name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: 'assets/tools/axe_1.png' },
+      iron_axe: { id: 'iron_axe', name: 'Железный топор', toolFor: 'tree', tier: 2, yield: 2, icon: 'assets/tools/axe_2.png' },
+      steel_axe: { id: 'steel_axe', name: 'Стальной топор', toolFor: 'tree', tier: 3, yield: 3, icon: 'assets/tools/axe_3.png' },
+      stone_pickaxe: { id: 'stone_pickaxe', name: 'Каменная кирка', toolFor: 'rock', tier: 1, yield: 1, icon: 'assets/tools/pickaxe_1.png' },
+      iron_pickaxe: { id: 'iron_pickaxe', name: 'Железная кирка', toolFor: 'rock', tier: 2, yield: 2, icon: 'assets/tools/pickaxe_2.png' },
+      steel_pickaxe: { id: 'steel_pickaxe', name: 'Стальная кирка', toolFor: 'rock', tier: 3, yield: 3, icon: 'assets/tools/pickaxe_3.png' }
     };
+    // Для тестирования все инструменты сразу доступны в инвентаре.
+    Object.values(TOOL_DEFINITIONS).forEach(tool => {
+      inventoryItems.push({ ...tool, count: 1 });
+    });
     const inventoryOverlay = document.getElementById('inventory-overlay');
     const quickSlotsElement = document.getElementById('quick-slots');
     const inventoryQuickElement = document.getElementById('inventory-quick');
     const inventoryGridElement = document.getElementById('inventory-grid');
     const healthValueElement = document.getElementById('health-value');
     const actionButton = document.getElementById('action-button');
+    const messageLog = document.getElementById('message-log');
+    const MESSAGE_LIFETIME = 2600;
+    const MESSAGE_LIMIT = 4;
+    function showGameMessage(text, type) {
+      const message = document.createElement('div');
+      message.className = `game-message ${type}`;
+      message.textContent = text;
+      messageLog.prepend(message);
+      while (messageLog.children.length > MESSAGE_LIMIT) messageLog.lastElementChild.remove();
+      window.setTimeout(() => message.remove(), MESSAGE_LIFETIME);
+    }
 
     function addResource(resourceId, amount = 1) {
       let stack = inventoryItems.find(item => item.id === resourceId);
@@ -518,14 +566,19 @@
         const tool = selectedItem?.toolFor === targetKind ? selectedItem : null;
 
         // Каждый удар кулаком отнимает здоровье. Подходящий инструмент — нет.
-        if (!tool) health = Math.max(0, health - HIT_HEALTH_COST);
+        if (!tool) {
+          health = Math.max(0, health - HIT_HEALTH_COST);
+          showGameMessage(`Игрок получил ${HIT_HEALTH_COST} урона`, 'damage');
+        }
 
         objectHitProgress[row][col] += 1;
         const required = objectHitRequired[row][col] || (targetKind === 'tree' ? 2 : 3);
 
         // Ресурс начисляется только после разрушения объекта.
         if (objectHitProgress[row][col] >= required) {
-          addResource(resourceId, tool ? tool.yield : 1);
+          const amount = tool ? tool.yield : 1;
+          addResource(resourceId, amount);
+          showGameMessage(`Получено: ${RESOURCE_NAMES[resourceId]} +${amount}`, 'resource');
           objectMap[row][col] = null;
           objectHitProgress[row][col] = 0;
           objectHitRequired[row][col] = 0;
@@ -654,7 +707,7 @@
     }
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES)].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
