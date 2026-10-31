@@ -52,6 +52,13 @@
     .world-object.tree-1 { width: 64px; height: 128px; }
     .world-object.tree-2 { width: 128px; height: 64px; }
     .world-object.rock { width: 64px; height: 64px; }
+    .workbench-marker {
+      position:absolute; inset:0; width:64px; height:64px;
+      object-fit:contain; image-rendering:pixelated;
+      pointer-events:none; z-index:5;
+    }
+    #placement-preview { position:absolute; width:64px; height:64px; display:none; border:3px solid #e33; background:rgba(235,35,35,.28); box-shadow:inset 0 0 0 1px #fff8; pointer-events:none; z-index:100000; }
+    #placement-preview.valid { border-color:#35e65b; background:rgba(35,220,75,.28); }
 
     #actors-layer { position: absolute; inset: 0; pointer-events: none; }
     #player {
@@ -105,6 +112,50 @@
       border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(150,150,150,.9);
       color: #333; font-size: 25px; cursor: pointer;
     }
+    #craft-open {
+      position: absolute; z-index: 7; top: calc(max(14px, env(safe-area-inset-top)) + var(--pad-size) + 8px);
+      right: max(14px, env(safe-area-inset-right)); width: var(--pad-size); height: var(--pad-size);
+      border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(150,150,150,.9);
+      color: #333; font-size: 23px; cursor: pointer;
+    }
+    #craft-overlay {
+      display: none; position: absolute; z-index: 21; inset: 0; background: rgba(0,0,0,.62);
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    #craft-overlay.open { display: flex; }
+    #craft-window {
+      width: min(560px, 100%); max-height: 90%; overflow: auto; padding: 14px;
+      background: #777; color: #fff; border: 2px solid #aaa; border-radius: 5px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    }
+    #craft-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+    #craft-header strong { font-size: 10px; line-height: 1.8; }
+    #craft-close { width:32px; height:32px; border:1px solid #ccc; border-radius:4px; background:#999; font-size:20px; }
+    .craft-recipe {
+      background: #929292; border: 2px solid #bcbcbc; border-radius: 4px;
+      padding: 12px; margin-bottom: 10px; color: #fff;
+    }
+    .craft-recipe-title { font-size: 9px; line-height: 1.8; margin-bottom: 10px; }
+    .craft-recipe-body { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+    .craft-ingredient {
+      min-width: 64px; display:flex; flex-direction:column; align-items:center; gap:5px;
+      padding:6px; background:rgba(40,40,40,.28); border:1px solid rgba(255,255,255,.2);
+      font: 8px 'PressStart2P', monospace;
+    }
+    .craft-ingredient img { width:34px; height:34px; object-fit:contain; image-rendering:pixelated; }
+    .craft-plus { font: 12px 'PressStart2P', monospace; }
+    .craft-create {
+      margin-left:auto; min-height:42px; padding:8px 12px; border:1px solid #555; border-radius:4px;
+      background:#383838; color:#fff; font: 8px/1.7 'PressStart2P',monospace; cursor:pointer;
+    }
+    .craft-create:active { background:#222; transform:translateY(1px); }
+    .craft-create img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
+    @media (max-width:480px) {
+      #craft-window { padding:10px; }
+      .craft-recipe { padding:9px; }
+      .craft-recipe-body { gap:6px; }
+      .craft-create { width:100%; margin:4px 0 0; }
+    }
     #action-button {
       position: absolute; z-index: 7; right: max(14px, env(safe-area-inset-right));
       bottom: max(14px, env(safe-area-inset-bottom)); width: var(--pad-size); height: var(--pad-size);
@@ -121,7 +172,8 @@
     }
     /* Fallout-подобная лента системных сообщений внизу экрана. */
     #message-log {
-      position: absolute; z-index: 9; left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+      /* Уведомления должны быть поверх окон инвентаря и крафта. */
+      position: absolute; z-index: 30; left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
       transform: translateX(-50%); width: min(620px, calc(100% - 150px));
       display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 7px;
       pointer-events: none;
@@ -184,6 +236,7 @@
     <div id="quick-slots" aria-label="Быстрые слоты"></div>
     <div id="health-panel">Здоровье: <span id="health-value">100</span>/100</div>
     <button id="inventory-open" type="button" aria-label="Открыть инвентарь">▦</button>
+    <button id="craft-open" type="button" aria-label="Открыть крафт">🔨</button>
     <div id="message-log" aria-live="polite" aria-atomic="false"></div>
     <button id="action-button" type="button" aria-label="Ударить">
       <span id="action-label">✊</span><span id="action-feedback">💢</span>
@@ -195,6 +248,12 @@
         <div id="inventory-grid" aria-label="32 ячейки инвентаря"></div>
       </section>
     </div>
+    <div id="craft-overlay" role="dialog" aria-modal="true" aria-label="Крафт">
+      <section id="craft-window">
+        <div id="craft-header"><strong>Создание предметов</strong><button id="craft-close" type="button" aria-label="Закрыть">×</button></div>
+        <div id="craft-recipes"></div>
+      </section>
+    </div>
   </main>
 
   <script>
@@ -203,6 +262,9 @@
     const player = document.getElementById('player');
     // Игрок находится в общем слое объектов для динамической сортировки по глубине.
     objectsLayer.appendChild(player);
+    const placementPreview = document.createElement('div');
+    placementPreview.id = 'placement-preview';
+    objectsLayer.appendChild(placementPreview);
 
     // Инвентарь: быстрые слоты и 32 ячейки используют одни и те же предметы.
     const quickSlots = [null, null, null, null];
@@ -221,6 +283,7 @@
       iron_pickaxe: { id: 'iron_pickaxe', name: 'Железная кирка', toolFor: 'rock', tier: 2, yield: 2, icon: 'assets/tools/pickaxe_2.png' },
       steel_pickaxe: { id: 'steel_pickaxe', name: 'Стальная кирка', toolFor: 'rock', tier: 3, yield: 3, icon: 'assets/tools/pickaxe_3.png' }
     };
+    const BUILDING_DEFINITIONS = { workbench: { id: 'workbench', name: 'Верстак', icon: 'assets/buildings/workbench_1.png', type: 'building' } };
     // Для тестирования все инструменты сразу доступны в инвентаре.
     Object.values(TOOL_DEFINITIONS).forEach(tool => {
       inventoryItems.push({ ...tool, count: 1 });
@@ -243,6 +306,106 @@
       window.setTimeout(() => message.remove(), MESSAGE_LIFETIME);
     }
 
+    const craftOverlay = document.getElementById('craft-overlay');
+    const craftRecipesElement = document.getElementById('craft-recipes');
+    const CRAFT_RECIPES = [
+      { id: 'stone_axe', name: 'Каменный топор', ingredients: { wood: 1, stone: 1 } },
+      { id: 'stone_pickaxe', name: 'Каменная кирка', ingredients: { wood: 1, stone: 1 } },
+      { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } }
+    ];
+
+    function getResourceCount(resourceId) {
+      return inventoryItems.find(item => item.id === resourceId)?.count || 0;
+    }
+
+    function craftItem(recipe) {
+      const enough = Object.entries(recipe.ingredients).every(([id, amount]) => getResourceCount(id) >= amount);
+      if (!enough) {
+        showGameMessage('Недостаточно ингредиентов предметов для создания', 'damage');
+        return;
+      }
+
+      // Ингредиенты расходуются при каждой попытке, даже если создание не удалось.
+      Object.entries(recipe.ingredients).forEach(([id, amount]) => {
+        const stack = inventoryItems.find(item => item.id === id);
+        stack.count -= amount;
+      });
+      for (let i = inventoryItems.length - 1; i >= 0; i--) {
+        if (inventoryItems[i].count <= 0) inventoryItems.splice(i, 1);
+      }
+      renderInventory();
+
+      if (Math.random() < 0.5) {
+        const craftedItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+        const existing = inventoryItems.find(item => item.id === craftedItem.id);
+        if (existing) existing.count += 1;
+        else inventoryItems.push({ ...craftedItem, count: 1 });
+        renderInventory();
+        showGameMessage(`${recipe.name} создан`, 'resource');
+      } else {
+        showGameMessage('Предмет сломался при создании', 'damage');
+      }
+    }
+
+    function renderCraftRecipes() {
+      craftRecipesElement.replaceChildren();
+      CRAFT_RECIPES.forEach(recipe => {
+        const card = document.createElement('div');
+        card.className = 'craft-recipe';
+        const title = document.createElement('div');
+        title.className = 'craft-recipe-title';
+        title.textContent = recipe.name;
+        const recipeItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+        if (recipeItem?.icon) {
+          const recipeIcon = document.createElement('img');
+          recipeIcon.src = recipeItem.icon;
+          recipeIcon.alt = recipe.name;
+          recipeIcon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
+          title.prepend(recipeIcon);
+        }
+        card.appendChild(title);
+
+        const body = document.createElement('div');
+        body.className = 'craft-recipe-body';
+        Object.entries(recipe.ingredients).forEach(([id, amount], index) => {
+          if (index) {
+            const plus = document.createElement('span');
+            plus.className = 'craft-plus'; plus.textContent = '+';
+            body.appendChild(plus);
+          }
+          const ingredient = document.createElement('div');
+          ingredient.className = 'craft-ingredient';
+          const image = document.createElement('img');
+          image.src = RESOURCE_ICONS[id]; image.alt = RESOURCE_NAMES[id];
+          ingredient.appendChild(image);
+          const quantity = document.createElement('span');
+          quantity.textContent = `x${amount}`;
+          ingredient.appendChild(quantity);
+          body.appendChild(ingredient);
+        });
+
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'craft-create';
+        button.textContent = '🔨 СОЗДАТЬ';
+        button.addEventListener('click', () => craftItem(recipe));
+        body.appendChild(button);
+        card.appendChild(body);
+        craftRecipesElement.appendChild(card);
+      });
+    }
+
+    document.getElementById('craft-open').addEventListener('click', () => {
+      renderCraftRecipes();
+      craftOverlay.classList.add('open');
+    });
+    document.getElementById('craft-close').addEventListener('click', () => craftOverlay.classList.remove('open'));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') craftOverlay.classList.remove('open');
+    });
+    craftOverlay.addEventListener('click', event => {
+      if (event.target === craftOverlay) craftOverlay.classList.remove('open');
+    });
+
     function addResource(resourceId, amount = 1) {
       let stack = inventoryItems.find(item => item.id === resourceId);
       if (!stack) {
@@ -263,10 +426,18 @@
         number.className = 'slot-number'; number.textContent = String(index + 1); slot.appendChild(number);
       }
       if (item) {
-        const icon = document.createElement('img');
-        icon.className = 'item-icon'; icon.src = item.icon; icon.alt = item.name;
-        icon.onerror = () => { icon.style.display = 'none'; };
-        slot.appendChild(icon);
+        if (item.icon) {
+          const icon = document.createElement('img');
+          icon.className = 'item-icon'; icon.src = item.icon; icon.alt = item.name;
+          icon.onerror = () => { icon.style.display = 'none'; };
+          slot.appendChild(icon);
+        } else {
+          const icon = document.createElement('span');
+          icon.className = 'item-icon';
+          icon.textContent = item.id === 'workbench' ? 'В' : '•';
+          icon.style.fontSize = '18px';
+          slot.appendChild(icon);
+        }
       }
       if (item) {
         const count = document.createElement('span'); count.className = 'slot-count'; count.textContent = String(item.count); slot.appendChild(count);
@@ -343,10 +514,10 @@
 
     const pressed = new Set();
     const keyDirections = {
-      ArrowUp: 'up', w: 'up', W: 'up',
-      ArrowDown: 'down', s: 'down', S: 'down',
-      ArrowLeft: 'left', a: 'left', A: 'left',
-      ArrowRight: 'right', d: 'right', D: 'right'
+      KeyW: 'up',
+      KeyA: 'left',
+      KeyS: 'down',
+      KeyD: 'right'
     };
 
     let facing = 'down';
@@ -474,6 +645,7 @@
       objectsLayer.replaceChildren(objectFragment);
       // replaceChildren очищает слой, поэтому возвращаем игрока после генерации клеток.
       objectsLayer.appendChild(player);
+      objectsLayer.appendChild(placementPreview);
       for (const layer of [terrainLayer, objectsLayer]) {
         layer.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
         layer.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
@@ -545,6 +717,64 @@
       return false;
     }
 
+    function getPlacementTarget() {
+      const centerX = worldPixelWidth / 2 + worldX;
+      const centerY = worldPixelHeight / 2 + worldY;
+      const offsets = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+      const [dx, dy] = offsets[facing];
+      return { col: Math.floor(centerX / 64) + dx, row: Math.floor(centerY / 64) + dy };
+    }
+
+    function canPlaceWorkbench(row, col) {
+      if (row < 0 || col < 0 || row >= worldRows || col >= worldColumns) return false;
+      return (worldMap[row][col] === 1 || worldMap[row][col] === 2) && objectMap[row][col] === null;
+    }
+
+    function updatePlacementPreview() {
+      if (quickSlots[selectedQuickSlot]?.id !== 'workbench') {
+        placementPreview.style.display = 'none';
+        return;
+      }
+      const target = getPlacementTarget();
+      placementPreview.style.left = `${target.col * 64}px`;
+      placementPreview.style.top = `${target.row * 64}px`;
+      placementPreview.style.display = 'block';
+      placementPreview.classList.toggle('valid', canPlaceWorkbench(target.row, target.col));
+    }
+
+    function placeWorkbench() {
+      const target = getPlacementTarget();
+      if (!canPlaceWorkbench(target.row, target.col)) {
+        showGameMessage('Здесь нельзя разместить верстак', 'damage');
+        return;
+      }
+      const item = inventoryItems.find(entry => entry.id === 'workbench' && entry.count > 0);
+      if (!item) {
+        showGameMessage('Верстак не найден в инвентаре', 'damage');
+        return;
+      }
+      item.count -= 1;
+      if (item.count <= 0) inventoryItems.splice(inventoryItems.indexOf(item), 1);
+      // После установки убираем верстак из быстрых слотов, чтобы нельзя было
+      // повторно выбрать уже размещённую постройку.
+      for (let i = 0; i < quickSlots.length; i++) {
+        if (quickSlots[i]?.id === 'workbench') quickSlots[i] = null;
+      }
+      objectMap[target.row][target.col] = 'workbench';
+      const cell = objectElements[target.row]?.[target.col];
+      if (cell) {
+        const marker = document.createElement('img');
+        marker.className = 'workbench-marker';
+        marker.src = BUILDING_DEFINITIONS.workbench.icon;
+        marker.alt = 'Верстак';
+        marker.draggable = false;
+        cell.appendChild(marker);
+      }
+      renderInventory();
+      updatePlacementPreview();
+      showGameMessage('Верстак установлен', 'resource');
+    }
+
     const HIT_HEALTH_COST = 2;
     let hitFeedbackTimer = 0;
     function performHit() {
@@ -588,13 +818,14 @@
       }
       healthValueElement.textContent = String(health);
     }
-    actionButton.addEventListener('click', performHit);
+    function performAction() { if (quickSlots[selectedQuickSlot]?.id === 'workbench') placeWorkbench(); else performHit(); }
+    actionButton.addEventListener('click', performAction);
     window.addEventListener('keydown', event => {
       if (event.key >= '1' && event.key <= '4') {
         selectedQuickSlot = Number(event.key) - 1;
         renderInventory();
       }
-      if (event.code === 'Space' && !event.repeat) { event.preventDefault(); performHit(); }
+      if (event.code === 'Space' && !event.repeat) { event.preventDefault(); performAction(); }
       if (event.key === 'Escape') inventoryOverlay.classList.remove('open');
     });
 
@@ -622,13 +853,13 @@
     });
 
     window.addEventListener('keydown', (event) => {
-      const direction = keyDirections[event.key];
+      const direction = keyDirections[event.code];
       if (!direction) return;
       event.preventDefault();
       pressed.add(direction);
     });
     window.addEventListener('keyup', (event) => {
-      const direction = keyDirections[event.key];
+      const direction = keyDirections[event.code];
       if (!direction) return;
       event.preventDefault();
       pressed.delete(direction);
@@ -699,6 +930,7 @@
 
       setPlayerSprite(facing, actualSpeed > WALK_THRESHOLD ? animationFrame : 0);
       updateCamera();
+      updatePlacementPreview();
       if (hitFeedbackTimer > 0) {
         hitFeedbackTimer -= dt;
         if (hitFeedbackTimer <= 0) actionButton.classList.remove('hit');
