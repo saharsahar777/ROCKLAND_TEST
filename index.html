@@ -118,6 +118,12 @@
       border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(150,150,150,.9);
       color: #333; font-size: 23px; cursor: pointer;
     }
+    #craft-open {
+      position: absolute; z-index: 7; top: calc(max(14px, env(safe-area-inset-top)) + var(--pad-size) + 8px);
+      right: max(14px, env(safe-area-inset-right)); width: var(--pad-size); height: var(--pad-size);
+      border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(150,150,150,.9);
+      color: #333; font-size: 23px; cursor: pointer;
+    }
     #craft-overlay {
       display: none; position: absolute; z-index: 21; inset: 0; background: rgba(0,0,0,.62);
       align-items: center; justify-content: center; padding: 16px;
@@ -131,6 +137,10 @@
     #craft-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
     #craft-header strong { font-size: 10px; line-height: 1.8; }
     #craft-close { width:32px; height:32px; border:1px solid #ccc; border-radius:4px; background:#999; font-size:20px; }
+    .craft-section-title {
+      margin: 14px 0 9px; padding: 8px 10px; background: #555;
+      border: 1px solid #aaa; color: #fff; font: 9px/1.8 'PressStart2P',monospace;
+    }
     .craft-recipe {
       background: #929292; border: 2px solid #bcbcbc; border-radius: 4px;
       padding: 12px; margin-bottom: 10px; color: #fff;
@@ -159,6 +169,13 @@
     #action-button {
       position: absolute; z-index: 7; right: max(14px, env(safe-area-inset-right));
       bottom: max(14px, env(safe-area-inset-bottom)); width: var(--pad-size); height: var(--pad-size);
+      border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(190,190,190,.92);
+      color: #333; font-size: 25px; cursor: pointer; user-select: none; touch-action: manipulation;
+    }
+    #interact-button {
+      position: absolute; z-index: 7; right: max(14px, env(safe-area-inset-right));
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--pad-size) + 10px);
+      width: var(--pad-size); height: var(--pad-size);
       border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(190,190,190,.92);
       color: #333; font-size: 25px; cursor: pointer; user-select: none; touch-action: manipulation;
     }
@@ -236,8 +253,9 @@
     <div id="quick-slots" aria-label="Быстрые слоты"></div>
     <div id="health-panel">Здоровье: <span id="health-value">100</span>/100</div>
     <button id="inventory-open" type="button" aria-label="Открыть инвентарь">▦</button>
-    <button id="craft-open" type="button" aria-label="Открыть крафт">🔨</button>
+    <button id="craft-open" type="button" aria-label="Открыть начальный крафт">🔨</button>
     <div id="message-log" aria-live="polite" aria-atomic="false"></div>
+    <button id="interact-button" type="button" aria-label="Взаимодействовать с объектом">🖐️</button>
     <button id="action-button" type="button" aria-label="Ударить">
       <span id="action-label">✊</span><span id="action-feedback">💢</span>
     </button>
@@ -250,7 +268,7 @@
     </div>
     <div id="craft-overlay" role="dialog" aria-modal="true" aria-label="Крафт">
       <section id="craft-window">
-        <div id="craft-header"><strong>Создание предметов</strong><button id="craft-close" type="button" aria-label="Закрыть">×</button></div>
+        <div id="craft-header"><strong>Верстак — меню крафта</strong><button id="craft-close" type="button" aria-label="Закрыть">×</button></div>
         <div id="craft-recipes"></div>
       </section>
     </div>
@@ -272,8 +290,8 @@
     let selectedQuickSlot = 0;
     let health = 100;
     const MAX_HEALTH = 100;
-    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень' };
-    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png' };
+    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток' };
+    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png' };
     // Поддержка будущих инструментов: прочности нет, инструмент не изнашивается.
     const TOOL_DEFINITIONS = {
       stone_axe: { id: 'stone_axe', name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: 'assets/tools/axe_1.png' },
@@ -283,11 +301,22 @@
       iron_pickaxe: { id: 'iron_pickaxe', name: 'Железная кирка', toolFor: 'rock', tier: 2, yield: 2, icon: 'assets/tools/pickaxe_2.png' },
       steel_pickaxe: { id: 'steel_pickaxe', name: 'Стальная кирка', toolFor: 'rock', tier: 3, yield: 3, icon: 'assets/tools/pickaxe_3.png' }
     };
-    const BUILDING_DEFINITIONS = { workbench: { id: 'workbench', name: 'Верстак', icon: 'assets/buildings/workbench_1.png', type: 'building' } };
+    const BUILDING_DEFINITIONS = {
+      workbench: { id: 'workbench', name: 'Верстак', icon: 'assets/buildings/workbench_1.png', type: 'building' },
+      furnace: { id: 'furnace', name: 'Горн', icon: 'assets/buildings/Bloomery_1.png', type: 'building' },
+      anvil: { id: 'anvil', name: 'Наковальня', icon: 'assets/buildings/anvil_1.png', type: 'building' }
+    };
     // Для тестирования все инструменты сразу доступны в инвентаре.
     Object.values(TOOL_DEFINITIONS).forEach(tool => {
       inventoryItems.push({ ...tool, count: 1 });
     });
+    // Стартовый запас ресурсов для тестирования новых рецептов и механик.
+    inventoryItems.push(
+      { id: 'wood', name: 'Древесина', count: 99, icon: RESOURCE_ICONS.wood },
+      { id: 'stone', name: 'Камень', count: 99, icon: RESOURCE_ICONS.stone },
+      { id: 'coal', name: 'Уголь', count: 99, icon: RESOURCE_ICONS.coal },
+      { id: 'iron_ore', name: 'Железная руда', count: 99, icon: RESOURCE_ICONS.iron_ore }
+    );
     const inventoryOverlay = document.getElementById('inventory-overlay');
     const quickSlotsElement = document.getElementById('quick-slots');
     const inventoryQuickElement = document.getElementById('inventory-quick');
@@ -308,10 +337,15 @@
 
     const craftOverlay = document.getElementById('craft-overlay');
     const craftRecipesElement = document.getElementById('craft-recipes');
-    const CRAFT_RECIPES = [
-      { id: 'stone_axe', name: 'Каменный топор', ingredients: { wood: 1, stone: 1 } },
+    const craftTitleElement = document.querySelector('#craft-header strong');
+    const SIMPLE_CRAFT_RECIPES = [
       { id: 'stone_pickaxe', name: 'Каменная кирка', ingredients: { wood: 1, stone: 1 } },
+      { id: 'stone_axe', name: 'Каменный топор', ingredients: { wood: 1, stone: 1 } },
       { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } }
+    ];
+    const WORKSHOP_RECIPES = [
+      { id: 'furnace', name: 'Горн', ingredients: { stone: 6, wood: 2, coal: 2 } },
+      { id: 'anvil', name: 'Наковальня', ingredients: { iron_ingot: 4 } }
     ];
 
     function getResourceCount(resourceId) {
@@ -325,7 +359,7 @@
         return;
       }
 
-      // Ингредиенты расходуются при каждой попытке, даже если создание не удалось.
+      // Крафт гарантированный: ресурсы списываются только когда хватает всех ингредиентов.
       Object.entries(recipe.ingredients).forEach(([id, amount]) => {
         const stack = inventoryItems.find(item => item.id === id);
         stack.count -= amount;
@@ -333,23 +367,99 @@
       for (let i = inventoryItems.length - 1; i >= 0; i--) {
         if (inventoryItems[i].count <= 0) inventoryItems.splice(i, 1);
       }
-      renderInventory();
-
-      if (Math.random() < 0.5) {
-        const craftedItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
-        const existing = inventoryItems.find(item => item.id === craftedItem.id);
-        if (existing) existing.count += 1;
-        else inventoryItems.push({ ...craftedItem, count: 1 });
+      const craftedItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id] || (RESOURCE_NAMES[recipe.id] ? { id: recipe.id, name: RESOURCE_NAMES[recipe.id], icon: RESOURCE_ICONS[recipe.id] } : null);
+      if (!craftedItem) {
+        showGameMessage('Ошибка: предмет не найден в базе крафта', 'damage');
         renderInventory();
-        showGameMessage(`${recipe.name} создан`, 'resource');
-      } else {
-        showGameMessage('Предмет сломался при создании', 'damage');
+        return;
       }
+      const existing = inventoryItems.find(item => item.id === craftedItem.id);
+      if (existing) existing.count += 1;
+      else inventoryItems.push({ ...craftedItem, count: 1 });
+      renderInventory();
+      showGameMessage(`${recipe.name} создан`, 'resource');
     }
 
     function renderCraftRecipes() {
       craftRecipesElement.replaceChildren();
-      CRAFT_RECIPES.forEach(recipe => {
+
+      function addSection(titleText, recipes) {
+        const heading = document.createElement('h3');
+        heading.className = 'craft-section-title';
+        heading.textContent = titleText;
+        craftRecipesElement.appendChild(heading);
+
+        recipes.forEach(recipe => {
+          const card = document.createElement('div');
+          card.className = 'craft-recipe';
+          const title = document.createElement('div');
+          title.className = 'craft-recipe-title';
+          title.textContent = recipe.name;
+
+          const recipeItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+          if (recipeItem?.icon) {
+            const recipeIcon = document.createElement('img');
+            recipeIcon.src = recipeItem.icon;
+            recipeIcon.alt = recipe.name;
+            recipeIcon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
+            title.prepend(recipeIcon);
+          }
+          card.appendChild(title);
+
+          if (recipe.unavailable) {
+            const note = document.createElement('div');
+            note.className = 'craft-recipe-title';
+            note.textContent = 'Рецепт и материалы будут добавлены на следующем этапе.';
+            card.appendChild(note);
+            craftRecipesElement.appendChild(card);
+            return;
+          }
+
+          const body = document.createElement('div');
+          body.className = 'craft-recipe-body';
+          Object.entries(recipe.ingredients).forEach(([id, amount], index) => {
+            if (index) {
+              const plus = document.createElement('span');
+              plus.className = 'craft-plus';
+              plus.textContent = '+';
+              body.appendChild(plus);
+            }
+            const ingredient = document.createElement('div');
+            ingredient.className = 'craft-ingredient';
+            const image = document.createElement('img');
+            image.src = RESOURCE_ICONS[id];
+            image.alt = RESOURCE_NAMES[id];
+            ingredient.appendChild(image);
+            const quantity = document.createElement('span');
+            quantity.textContent = `x${amount}`;
+            ingredient.appendChild(quantity);
+            body.appendChild(ingredient);
+          });
+
+
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'craft-create';
+          button.textContent = '🔨 СОЗДАТЬ';
+          button.addEventListener('click', () => craftItem(recipe));
+          body.appendChild(button);
+          card.appendChild(body);
+          craftRecipesElement.appendChild(card);
+        });
+      }
+
+      addSection('ПРОСТОЙ КРАФТ', SIMPLE_CRAFT_RECIPES);
+      addSection('МАСТЕРСКИЕ ОБЪЕКТЫ', WORKSHOP_RECIPES);
+    }
+
+    function renderInitialCraftRecipes() {
+      craftRecipesElement.replaceChildren();
+      const heading = document.createElement('h3');
+      heading.className = 'craft-section-title';
+      heading.textContent = 'НАЧАЛЬНЫЙ КРАФТ';
+      craftRecipesElement.appendChild(heading);
+      const initialRecipes = SIMPLE_CRAFT_RECIPES;
+      initialRecipes.forEach(recipe => {
         const card = document.createElement('div');
         card.className = 'craft-recipe';
         const title = document.createElement('div');
@@ -357,35 +467,36 @@
         title.textContent = recipe.name;
         const recipeItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
         if (recipeItem?.icon) {
-          const recipeIcon = document.createElement('img');
-          recipeIcon.src = recipeItem.icon;
-          recipeIcon.alt = recipe.name;
-          recipeIcon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
-          title.prepend(recipeIcon);
+          const icon = document.createElement('img');
+          icon.src = recipeItem.icon;
+          icon.alt = recipe.name;
+          icon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
+          title.prepend(icon);
         }
         card.appendChild(title);
-
         const body = document.createElement('div');
         body.className = 'craft-recipe-body';
         Object.entries(recipe.ingredients).forEach(([id, amount], index) => {
           if (index) {
             const plus = document.createElement('span');
-            plus.className = 'craft-plus'; plus.textContent = '+';
+            plus.className = 'craft-plus';
+            plus.textContent = '+';
             body.appendChild(plus);
           }
           const ingredient = document.createElement('div');
           ingredient.className = 'craft-ingredient';
           const image = document.createElement('img');
-          image.src = RESOURCE_ICONS[id]; image.alt = RESOURCE_NAMES[id];
+          image.src = RESOURCE_ICONS[id];
+          image.alt = RESOURCE_NAMES[id];
           ingredient.appendChild(image);
           const quantity = document.createElement('span');
           quantity.textContent = `x${amount}`;
           ingredient.appendChild(quantity);
           body.appendChild(ingredient);
         });
-
         const button = document.createElement('button');
-        button.type = 'button'; button.className = 'craft-create';
+        button.type = 'button';
+        button.className = 'craft-create';
         button.textContent = '🔨 СОЗДАТЬ';
         button.addEventListener('click', () => craftItem(recipe));
         body.appendChild(button);
@@ -395,7 +506,8 @@
     }
 
     document.getElementById('craft-open').addEventListener('click', () => {
-      renderCraftRecipes();
+      craftTitleElement.textContent = 'Начальный крафт';
+      renderInitialCraftRecipes();
       craftOverlay.classList.add('open');
     });
     document.getElementById('craft-close').addEventListener('click', () => craftOverlay.classList.remove('open'));
@@ -434,7 +546,7 @@
         } else {
           const icon = document.createElement('span');
           icon.className = 'item-icon';
-          icon.textContent = item.id === 'workbench' ? 'В' : '•';
+          icon.textContent = item.id === 'workbench' ? 'В' : item.id === 'furnace' ? 'Г' : item.id === 'anvil' ? 'Н' : '•';
           icon.style.fontSize = '18px';
           slot.appendChild(icon);
         }
@@ -725,13 +837,14 @@
       return { col: Math.floor(centerX / 64) + dx, row: Math.floor(centerY / 64) + dy };
     }
 
-    function canPlaceWorkbench(row, col) {
+    function canPlaceBuilding(row, col) {
       if (row < 0 || col < 0 || row >= worldRows || col >= worldColumns) return false;
       return (worldMap[row][col] === 1 || worldMap[row][col] === 2) && objectMap[row][col] === null;
     }
 
     function updatePlacementPreview() {
-      if (quickSlots[selectedQuickSlot]?.id !== 'workbench') {
+      const selected = quickSlots[selectedQuickSlot];
+      if (!selected || !BUILDING_DEFINITIONS[selected.id]) {
         placementPreview.style.display = 'none';
         return;
       }
@@ -739,40 +852,41 @@
       placementPreview.style.left = `${target.col * 64}px`;
       placementPreview.style.top = `${target.row * 64}px`;
       placementPreview.style.display = 'block';
-      placementPreview.classList.toggle('valid', canPlaceWorkbench(target.row, target.col));
+      placementPreview.classList.toggle('valid', canPlaceBuilding(target.row, target.col));
     }
 
-    function placeWorkbench() {
+    function placeBuilding(buildingId) {
+      const definition = BUILDING_DEFINITIONS[buildingId];
+      if (!definition) return;
       const target = getPlacementTarget();
-      if (!canPlaceWorkbench(target.row, target.col)) {
-        showGameMessage('Здесь нельзя разместить верстак', 'damage');
+      if (!canPlaceBuilding(target.row, target.col)) {
+        showGameMessage('Здесь нельзя разместить объект', 'damage');
         return;
       }
-      const item = inventoryItems.find(entry => entry.id === 'workbench' && entry.count > 0);
+      const item = inventoryItems.find(entry => entry.id === buildingId && entry.count > 0);
       if (!item) {
-        showGameMessage('Верстак не найден в инвентаре', 'damage');
+        showGameMessage(`${definition.name} не найден в инвентаре`, 'damage');
         return;
       }
       item.count -= 1;
       if (item.count <= 0) inventoryItems.splice(inventoryItems.indexOf(item), 1);
-      // После установки убираем верстак из быстрых слотов, чтобы нельзя было
-      // повторно выбрать уже размещённую постройку.
       for (let i = 0; i < quickSlots.length; i++) {
-        if (quickSlots[i]?.id === 'workbench') quickSlots[i] = null;
+        if (quickSlots[i]?.id === buildingId) quickSlots[i] = null;
       }
-      objectMap[target.row][target.col] = 'workbench';
+      objectMap[target.row][target.col] = buildingId;
       const cell = objectElements[target.row]?.[target.col];
       if (cell) {
         const marker = document.createElement('img');
         marker.className = 'workbench-marker';
-        marker.src = BUILDING_DEFINITIONS.workbench.icon;
-        marker.alt = 'Верстак';
+        marker.src = definition.icon;
+        marker.alt = definition.name;
         marker.draggable = false;
+        marker.onerror = () => console.error(`Не удалось загрузить спрайт: ${marker.src}`);
         cell.appendChild(marker);
       }
       renderInventory();
       updatePlacementPreview();
-      showGameMessage('Верстак установлен', 'resource');
+      showGameMessage(`${definition.name} установлен${buildingId === 'anvil' ? 'а' : ''}`, 'resource');
     }
 
     const HIT_HEALTH_COST = 2;
@@ -789,36 +903,152 @@
       actionButton.classList.add('hit');
       hitFeedbackTimer = 0.18;
 
-      if (objectType) {
-        const targetKind = objectType.startsWith('tree') ? 'tree' : 'rock';
-        const resourceId = targetKind === 'tree' ? 'wood' : 'stone';
-        const selectedItem = quickSlots[selectedQuickSlot];
-        const tool = selectedItem?.toolFor === targetKind ? selectedItem : null;
+      if (!objectType) {
+        showGameMessage('Перед вами нет объекта для удара.', 'damage');
+        return;
+      }
 
-        // Каждый удар кулаком отнимает здоровье. Подходящий инструмент — нет.
-        if (!tool) {
-          health = Math.max(0, health - HIT_HEALTH_COST);
-          showGameMessage(`Игрок получил ${HIT_HEALTH_COST} урона`, 'damage');
+      if (objectType === 'furnace' || objectType === 'anvil') {
+        showGameMessage('Этот мастерской объект нельзя разрушить таким способом.', 'damage');
+        return;
+      }
+      const targetKind = objectType === 'workbench'
+        ? 'workbench'
+        : (objectType.startsWith('tree') ? 'tree' : 'rock');
+      const targetName = targetKind === 'tree' ? 'дереву'
+        : targetKind === 'rock' ? 'камню' : 'верстаку';
+      const selectedItem = quickSlots[selectedQuickSlot];
+      const isAxe = Boolean(selectedItem?.toolFor === 'tree');
+      const isPickaxe = Boolean(selectedItem?.toolFor === 'rock');
+
+      // Верстак нельзя разбирать киркой: действие прекращается без урона и прогресса.
+      if (targetKind === 'workbench' && isPickaxe) {
+        showGameMessage('Я не могу сломать верстак киркой.', 'damage');
+        return;
+      }
+
+      const correctTool = targetKind === 'workbench'
+        ? (isAxe ? selectedItem : null)
+        : (selectedItem?.toolFor === targetKind ? selectedItem : null);
+
+      if (correctTool) {
+        showGameMessage(`Вы ударили по ${targetName} инструментом: ${correctTool.name}.`, 'resource');
+      } else {
+        showGameMessage(`Вы ударили по ${targetName} рукой.`, 'damage');
+        health = Math.max(0, health - HIT_HEALTH_COST);
+        showGameMessage(`Вы получили ${HIT_HEALTH_COST} урона.`, 'damage');
+      }
+
+      objectHitProgress[row][col] += 1;
+      const required = objectHitRequired[row][col] || (targetKind === 'tree' ? 2 : 3);
+
+      if (objectHitProgress[row][col] >= required) {
+        // Верстак всегда возвращает одну древесину; инструменты не увеличивают добычу.
+        const amount = targetKind === 'workbench' ? 1 : (correctTool ? correctTool.yield : 1);
+        const resourceId = targetKind === 'rock' ? 'stone' : 'wood';
+        addResource(resourceId, amount);
+        const destroyedName = targetKind === 'tree' ? 'Дерево' : targetKind === 'rock' ? 'Камень' : 'Верстак';
+        showGameMessage(`${destroyedName} разрушен.`, 'resource');
+        showGameMessage(`Получено: ${RESOURCE_NAMES[resourceId]} +${amount}.`, 'resource');
+
+        // При добыче каждого камня отдельно проверяем шанс найти уголь и железную руду.
+        // Проверки независимы: за один камень могут выпасть оба дополнительных ресурса.
+        if (targetKind === 'rock' && Math.random() < 0.20) {
+          addResource('coal', 1);
+          showGameMessage('Найдено: Уголь +1!', 'resource');
+        }
+        if (targetKind === 'rock' && Math.random() < 0.05) {
+          addResource('iron_ore', 1);
+          showGameMessage('Найдена: Железная руда +1!', 'resource');
         }
 
-        objectHitProgress[row][col] += 1;
-        const required = objectHitRequired[row][col] || (targetKind === 'tree' ? 2 : 3);
-
-        // Ресурс начисляется только после разрушения объекта.
-        if (objectHitProgress[row][col] >= required) {
-          const amount = tool ? tool.yield : 1;
-          addResource(resourceId, amount);
-          showGameMessage(`Получено: ${RESOURCE_NAMES[resourceId]} +${amount}`, 'resource');
-          objectMap[row][col] = null;
-          objectHitProgress[row][col] = 0;
-          objectHitRequired[row][col] = 0;
-          const objectCell = objectElements[row]?.[col];
-          if (objectCell) objectCell.replaceChildren();
-        }
+        objectMap[row][col] = null;
+        objectHitProgress[row][col] = 0;
+        objectHitRequired[row][col] = 0;
+        const objectCell = objectElements[row]?.[col];
+        if (objectCell) objectCell.replaceChildren();
       }
       healthValueElement.textContent = String(health);
     }
-    function performAction() { if (quickSlots[selectedQuickSlot]?.id === 'workbench') placeWorkbench(); else performHit(); }
+    function performAction() { const selected = quickSlots[selectedQuickSlot]; if (selected && BUILDING_DEFINITIONS[selected.id]) placeBuilding(selected.id); else performHit(); }
+
+    const interactButton = document.getElementById('interact-button');
+    function performInteraction() {
+      const target = getPlacementTarget();
+      const objectType = objectMap[target.row]?.[target.col];
+      if (!objectType) {
+        showGameMessage('Перед вами нет объекта для взаимодействия.', 'damage');
+        return;
+      }
+      if (objectType === 'workbench') {
+        craftTitleElement.textContent = 'Верстак — меню крафта';
+        renderCraftRecipes();
+        craftOverlay.classList.add('open');
+        showGameMessage('Вы взаимодействуете с верстаком.', 'resource');
+        return;
+      }
+      if (objectType === 'furnace' || objectType === 'anvil') {
+        const isFurnace = objectType === 'furnace';
+        craftTitleElement.textContent = isFurnace ? 'Горн — рецепты выплавки' : 'Наковальня — рецепты ковки';
+        craftRecipesElement.replaceChildren();
+        const heading = document.createElement('h3');
+        heading.className = 'craft-section-title';
+        heading.textContent = isFurnace ? 'РЕЦЕПТЫ ВЫПЛАВКИ' : 'РЕЦЕПТЫ КОВКИ';
+        craftRecipesElement.appendChild(heading);
+        if (isFurnace) {
+          const recipe = { id: 'iron_ingot', name: 'Железный слиток', ingredients: { iron_ore: 2, wood: 1 } };
+          const card = document.createElement('div');
+          card.className = 'craft-recipe';
+          const title = document.createElement('div');
+          title.className = 'craft-recipe-title';
+          const resultIcon = document.createElement('img');
+          resultIcon.src = RESOURCE_ICONS.iron_ingot;
+          resultIcon.alt = recipe.name;
+          resultIcon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
+          title.append(resultIcon, document.createTextNode(recipe.name));
+          card.appendChild(title);
+          const body = document.createElement('div');
+          body.className = 'craft-recipe-body';
+          Object.entries(recipe.ingredients).forEach(([id, amount], index) => {
+            if (index) {
+              const plus = document.createElement('span');
+              plus.className = 'craft-plus';
+              plus.textContent = '+';
+              body.appendChild(plus);
+            }
+            const ingredient = document.createElement('div');
+            ingredient.className = 'craft-ingredient';
+            const image = document.createElement('img');
+            image.src = RESOURCE_ICONS[id];
+            image.alt = RESOURCE_NAMES[id];
+            ingredient.appendChild(image);
+            const quantity = document.createElement('span');
+            quantity.textContent = `x${amount}`;
+            ingredient.appendChild(quantity);
+            body.appendChild(ingredient);
+          });
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'craft-create';
+          button.textContent = '🔥 ВЫПЛАВИТЬ';
+          button.addEventListener('click', () => craftItem(recipe));
+          body.appendChild(button);
+          card.appendChild(body);
+          craftRecipesElement.appendChild(card);
+        } else {
+          const note = document.createElement('div');
+          note.className = 'craft-recipe-title';
+          note.textContent = 'Рецепты ковки будут добавлены на следующем этапе.';
+          craftRecipesElement.appendChild(note);
+        }
+        craftOverlay.classList.add('open');
+        showGameMessage(`Вы взаимодействуете: ${isFurnace ? 'горн' : 'наковальня'}.`, 'resource');
+        return;
+      }
+      const objectName = objectType.startsWith('tree') ? 'деревом' : 'камнем';
+      showGameMessage(`С ${objectName} пока нельзя взаимодействовать.`, 'damage');
+    }
+    interactButton.addEventListener('click', performInteraction); 
     actionButton.addEventListener('click', performAction);
     window.addEventListener('keydown', event => {
       if (event.key >= '1' && event.key <= '4') {
@@ -826,7 +1056,11 @@
         renderInventory();
       }
       if (event.code === 'Space' && !event.repeat) { event.preventDefault(); performAction(); }
-      if (event.key === 'Escape') inventoryOverlay.classList.remove('open');
+      if (event.code === 'KeyE' && !event.repeat) { event.preventDefault(); performInteraction(); }
+      if (event.key === 'Escape') {
+        inventoryOverlay.classList.remove('open');
+        craftOverlay.classList.remove('open');
+      }
     });
 
     function setDirection(direction, isDown) {
