@@ -31,8 +31,9 @@
     }
     .cell {
       width: var(--cell-size); height: var(--cell-size);
-      background-size: 100% 100%; background-position: center; background-repeat: no-repeat;
+      background-size: calc(100% + 1px) calc(100% + 1px); background-position: center; background-repeat: no-repeat;
       image-rendering: pixelated;
+      /* Перекрываем субпиксельные щели между тайлами при движении камеры. */
     }
 
     #objects-layer {
@@ -53,9 +54,17 @@
     .world-object.tree-2 { width: 128px; height: 64px; }
     .world-object.rock { width: 64px; height: 64px; }
     .workbench-marker {
-      position:absolute; inset:0; width:64px; height:64px;
+      position:absolute; left:50%; bottom:-8px;
+      width:64px; height:64px;
+      transform:translateX(-50%);
       object-fit:contain; image-rendering:pixelated;
       pointer-events:none; z-index:5;
+    }
+    /* Сдвиг компенсирует прозрачный отступ снизу в PNG: видимое основание касается нижнего края ячейки. */
+    /* Верстак и наковальня уменьшены на 25%, основание выровнено по нижнему краю ячейки. */
+    .workbench-marker.workbench,
+    .workbench-marker.anvil {
+      width:48px; height:48px;
     }
     #placement-preview { position:absolute; width:64px; height:64px; display:none; border:3px solid #e33; background:rgba(235,35,35,.28); box-shadow:inset 0 0 0 1px #fff8; pointer-events:none; z-index:100000; }
     #placement-preview.valid { border-color:#35e65b; background:rgba(35,220,75,.28); }
@@ -106,6 +115,9 @@
     .slot-count { position: absolute; right: 3px; bottom: 2px; font-size: 11px; }
     .item-icon { width: 30px; height: 30px; object-fit: contain; image-rendering: pixelated; pointer-events: none; }
     #inventory-grid .item-icon { width: 34px; height: 34px; }
+    .durability-track { position:absolute; left:5px; right:5px; bottom:4px; height:5px; background:#292929; border:1px solid #111; border-radius:2px; overflow:hidden; }
+    .durability-fill { display:block; height:100%; }
+    .durability-value { position:absolute; left:0; right:0; bottom:10px; color:#fff; font:8px monospace; text-shadow:1px 1px #000; text-align:center; pointer-events:none; }
     #inventory-open {
       position: absolute; z-index: 7; top: max(14px, env(safe-area-inset-top));
       right: max(14px, env(safe-area-inset-right)); width: var(--pad-size); height: var(--pad-size);
@@ -263,7 +275,7 @@
       <section id="inventory-window">
         <div id="inventory-header"><strong>Инвентарь</strong><button id="inventory-close" type="button" aria-label="Закрыть">×</button></div>
         <div id="inventory-quick" aria-label="Быстрые слоты в инвентаре"></div>
-        <div id="inventory-grid" aria-label="32 ячейки инвентаря"></div>
+        <div id="inventory-grid" aria-label="16 ячеек инвентаря"></div>
       </section>
     </div>
     <div id="craft-overlay" role="dialog" aria-modal="true" aria-label="Крафт">
@@ -284,15 +296,15 @@
     placementPreview.id = 'placement-preview';
     objectsLayer.appendChild(placementPreview);
 
-    // Инвентарь: быстрые слоты и 32 ячейки используют одни и те же предметы.
+    // Инвентарь: быстрые слоты и 16 ячеек используют одни и те же предметы.
     const quickSlots = [null, null, null, null];
     const inventoryItems = [];
     let selectedQuickSlot = 0;
     let health = 100;
     const MAX_HEALTH = 100;
-    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток' };
-    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png' };
-    // Поддержка будущих инструментов: прочности нет, инструмент не изнашивается.
+    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток' };
+    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png' };
+    // Инструменты и оружие имеют индивидуальную прочность: 100 единиц при создании.
     const TOOL_DEFINITIONS = {
       stone_axe: { id: 'stone_axe', name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: 'assets/tools/axe_1.png' },
       iron_axe: { id: 'iron_axe', name: 'Железный топор', toolFor: 'tree', tier: 2, yield: 2, icon: 'assets/tools/axe_2.png' },
@@ -308,7 +320,7 @@
     };
     // Для тестирования все инструменты сразу доступны в инвентаре.
     Object.values(TOOL_DEFINITIONS).forEach(tool => {
-      inventoryItems.push({ ...tool, count: 1 });
+      inventoryItems.push({ ...tool, count: 1, durability: 100, maxDurability: 100 });
     });
     // Стартовый запас ресурсов для тестирования новых рецептов и механик.
     inventoryItems.push(
@@ -359,6 +371,11 @@
         return;
       }
 
+      if (TOOL_DEFINITIONS[recipe.id] && inventoryItems.length >= 16) {
+        showGameMessage('Инвентарь заполнен', 'damage');
+        return;
+      }
+
       // Крафт гарантированный: ресурсы списываются только когда хватает всех ингредиентов.
       Object.entries(recipe.ingredients).forEach(([id, amount]) => {
         const stack = inventoryItems.find(item => item.id === id);
@@ -373,9 +390,13 @@
         renderInventory();
         return;
       }
-      const existing = inventoryItems.find(item => item.id === craftedItem.id);
-      if (existing) existing.count += 1;
-      else inventoryItems.push({ ...craftedItem, count: 1 });
+      if (TOOL_DEFINITIONS[recipe.id]) {
+        inventoryItems.push({ ...craftedItem, count: 1, durability: 100, maxDurability: 100 });
+      } else {
+        const existing = inventoryItems.find(item => item.id === craftedItem.id);
+        if (existing) existing.count += 1;
+        else inventoryItems.push({ ...craftedItem, count: 1 });
+      }
       renderInventory();
       showGameMessage(`${recipe.name} создан`, 'resource');
     }
@@ -532,7 +553,7 @@
       const slot = document.createElement('button');
       slot.type = 'button';
       slot.className = 'item-slot' + (isQuick && index === selectedQuickSlot ? ' selected' : '');
-      slot.title = item ? `${item.name}: ${item.count}` : `Пустой слот ${index + 1}`;
+      slot.title = item ? (Number.isFinite(item.durability) ? `${item.name}: прочность ${item.durability}/${item.maxDurability}` : `${item.name}: ${item.count}`) : `Пустой слот ${index + 1}`;
       if (isQuick) {
         const number = document.createElement('span');
         number.className = 'slot-number'; number.textContent = String(index + 1); slot.appendChild(number);
@@ -551,7 +572,20 @@
           slot.appendChild(icon);
         }
       }
-      if (item) {
+      if (item && Number.isFinite(item.durability)) {
+        const bar = document.createElement('span');
+        bar.className = 'durability-track';
+        const fill = document.createElement('span');
+        fill.className = 'durability-fill';
+        fill.style.width = `${Math.max(0, item.durability / item.maxDurability * 100)}%`;
+        fill.style.background = item.durability <= item.maxDurability * 0.3 ? '#bd4942' : item.durability <= item.maxDurability * 0.6 ? '#c5a33a' : '#438b50';
+        bar.appendChild(fill);
+        slot.appendChild(bar);
+        const value = document.createElement('span');
+        value.className = 'durability-value';
+        value.textContent = `${item.durability}/${item.maxDurability}`;
+        slot.appendChild(value);
+      } else if (item) {
         const count = document.createElement('span'); count.className = 'slot-count'; count.textContent = String(item.count); slot.appendChild(count);
       }
       if (isQuick) {
@@ -570,7 +604,7 @@
         inventoryQuickElement.appendChild(makeSlot(index, item, true));
       });
       inventoryGridElement.replaceChildren();
-      for (let i = 0; i < 32; i++) {
+      for (let i = 0; i < 16; i++) {
         inventoryGridElement.appendChild(makeSlot(i, inventoryItems[i] || null, false));
       }
       healthValueElement.textContent = String(health);
@@ -650,7 +684,7 @@
     // Базовые веса типов местности: 1 — почва, 2 — трава, 3 — каменистая земля.
     // Ландшафт генерируется блоками 2×2 клетки (четыре клетки одного типа).
     // Переходы: трава ↔ почва ↔ камни. Трава и камни напрямую не соприкасаются сторонами.
-    const TILE_WEIGHTS = { 1: 30, 2: 10, 3: 60 };
+    const TILE_WEIGHTS = { 1: 25, 2: 50, 3: 25 };
     const BLOCK_SIZE = 2;
 
     function canNeighbor(tile, neighbor) {
@@ -675,8 +709,8 @@
     function generateWorld() {
       const cellSize = parseFloat(getComputedStyle(document.documentElement)
         .getPropertyValue('--cell-size')) || 64;
-      const columns = Math.max(41, (Math.ceil(window.innerWidth * 3 / cellSize) | 1));
-      const rows = Math.max(41, (Math.ceil(window.innerHeight * 3 / cellSize) | 1));
+      const columns = 32;
+      const rows = 32;
       const terrainFragment = document.createDocumentFragment();
       const objectFragment = document.createDocumentFragment();
       const blockColumns = Math.ceil(columns / BLOCK_SIZE);
@@ -877,7 +911,7 @@
       const cell = objectElements[target.row]?.[target.col];
       if (cell) {
         const marker = document.createElement('img');
-        marker.className = 'workbench-marker';
+        marker.className = `workbench-marker ${buildingId}`;
         marker.src = definition.icon;
         marker.alt = definition.name;
         marker.draggable = false;
@@ -939,6 +973,21 @@
         showGameMessage(`Вы получили ${HIT_HEALTH_COST} урона.`, 'damage');
       }
 
+      if (selectedItem && Number.isFinite(selectedItem.durability)) {
+        selectedItem.durability = Math.max(0, selectedItem.durability - 1);
+        if (selectedItem.durability === 0) {
+          const itemIndex = inventoryItems.indexOf(selectedItem);
+          if (itemIndex >= 0) inventoryItems.splice(itemIndex, 1);
+          for (let slotIndex = 0; slotIndex < quickSlots.length; slotIndex++) {
+            if (quickSlots[slotIndex] === selectedItem) quickSlots[slotIndex] = null;
+          }
+          showGameMessage(`${selectedItem.name} сломался.`, 'damage');
+        } else if (selectedItem.durability <= selectedItem.maxDurability * 0.2) {
+          showGameMessage(`Прочность ${selectedItem.name}: ${selectedItem.durability}/${selectedItem.maxDurability}`, 'damage');
+        }
+        renderInventory();
+      }
+
       objectHitProgress[row][col] += 1;
       const required = objectHitRequired[row][col] || (targetKind === 'tree' ? 2 : 3);
 
@@ -995,18 +1044,31 @@
         heading.className = 'craft-section-title';
         heading.textContent = isFurnace ? 'РЕЦЕПТЫ ВЫПЛАВКИ' : 'РЕЦЕПТЫ КОВКИ';
         craftRecipesElement.appendChild(heading);
-        if (isFurnace) {
-          const recipe = { id: 'iron_ingot', name: 'Железный слиток', ingredients: { iron_ore: 2, wood: 1 } };
+        const stationRecipes = isFurnace
+          ? [
+              { id: 'iron_ingot', name: 'Железный слиток', ingredients: { iron_ore: 2, wood: 1 }, action: '🔥 ВЫПЛАВИТЬ' },
+              { id: 'steel_ingot', name: 'Стальной слиток', ingredients: { iron_ingot: 1, coal: 1 }, action: '🔥 ВЫПЛАВИТЬ' }
+            ]
+          : [
+              { id: 'iron_axe', name: 'Железный топор', ingredients: { iron_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
+              { id: 'iron_pickaxe', name: 'Железная кирка', ingredients: { iron_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' },
+              { id: 'steel_axe', name: 'Стальной топор', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
+              { id: 'steel_pickaxe', name: 'Стальная кирка', ingredients: { steel_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' }
+            ];
+
+        stationRecipes.forEach(recipe => {
           const card = document.createElement('div');
           card.className = 'craft-recipe';
           const title = document.createElement('div');
           title.className = 'craft-recipe-title';
+          const resultDefinition = TOOL_DEFINITIONS[recipe.id];
           const resultIcon = document.createElement('img');
-          resultIcon.src = RESOURCE_ICONS.iron_ingot;
+          resultIcon.src = resultDefinition?.icon || RESOURCE_ICONS[recipe.id];
           resultIcon.alt = recipe.name;
           resultIcon.style.cssText = 'width:42px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:10px;';
           title.append(resultIcon, document.createTextNode(recipe.name));
           card.appendChild(title);
+
           const body = document.createElement('div');
           body.className = 'craft-recipe-body';
           Object.entries(recipe.ingredients).forEach(([id, amount], index) => {
@@ -1030,17 +1092,12 @@
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'craft-create';
-          button.textContent = '🔥 ВЫПЛАВИТЬ';
+          button.textContent = recipe.action;
           button.addEventListener('click', () => craftItem(recipe));
           body.appendChild(button);
           card.appendChild(body);
           craftRecipesElement.appendChild(card);
-        } else {
-          const note = document.createElement('div');
-          note.className = 'craft-recipe-title';
-          note.textContent = 'Рецепты ковки будут добавлены на следующем этапе.';
-          craftRecipesElement.appendChild(note);
-        }
+        });
         craftOverlay.classList.add('open');
         showGameMessage(`Вы взаимодействуете: ${isFurnace ? 'горн' : 'наковальня'}.`, 'resource');
         return;
@@ -1173,7 +1230,7 @@
     }
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon)].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
