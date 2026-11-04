@@ -138,6 +138,42 @@
       border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(150,150,150,.9);
       color: #333; font-size: 23px; cursor: pointer;
     }
+    #dev-open {
+      position: absolute; z-index: 7;
+      top: calc(max(14px, env(safe-area-inset-top)) + var(--pad-size) + 8px + var(--pad-size) + 8px);
+      right: max(14px, env(safe-area-inset-right)); width: var(--pad-size); height: var(--pad-size);
+      border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(95,115,98,.94);
+      color: #fff; font-size: 22px; cursor: pointer;
+    }
+    #dev-overlay {
+      display: none; position: absolute; z-index: 22; inset: 0; background: rgba(0,0,0,.68);
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    #dev-overlay.open { display: flex; }
+    #dev-window {
+      width: min(600px, 100%); max-height: 90%; overflow: auto; padding: 14px;
+      background: #686868; color: #fff; border: 2px solid #aaa; border-radius: 5px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    }
+    #dev-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+    #dev-header strong { font-size:10px; line-height:1.8; }
+    #dev-close { width:32px; height:32px; border:1px solid #ccc; border-radius:4px; background:#999; font-size:20px; }
+    #dev-categories { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; margin-bottom:12px; }
+    .dev-category { min-height:38px; padding:6px 4px; border:1px solid #aaa; border-radius:3px; background:#454545; color:#fff; font:7px/1.5 'PressStart2P',monospace; cursor:pointer; }
+    .dev-category.active { background:#8b8b8b; border-color:#f2d45c; color:#fff; }
+    #dev-items { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr)); gap:8px; }
+    .dev-item { min-height:94px; padding:8px 5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; border:1px solid #aaa; border-radius:4px; background:#858585; color:#fff; font:7px/1.6 'PressStart2P',monospace; text-align:center; cursor:pointer; }
+    .dev-item:active { background:#555; transform:translateY(1px); }
+    .dev-item img { width:40px; height:40px; object-fit:contain; image-rendering:pixelated; }
+    .dev-item-icon { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:25px; }
+    #dev-hint { margin-top:10px; color:#eee; font:7px/1.7 'PressStart2P',monospace; }
+    @media (max-width:480px) {
+      #dev-window { padding:10px; }
+      #dev-items { grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; }
+      .dev-item { min-height:86px; font-size:6px; }
+      #dev-categories { gap:4px; }
+      .dev-category { font-size:6px; }
+    }
     #craft-overlay {
       display: none; position: absolute; z-index: 21; inset: 0; background: rgba(0,0,0,.62);
       align-items: center; justify-content: center; padding: 16px;
@@ -198,9 +234,16 @@
     #action-button.hit #action-label { display: none; }
     #health-panel {
       position: absolute; z-index: 6; top: max(14px, env(safe-area-inset-top));
-      left: 50%; transform: translateX(-50%); color: white; font: 13px Arial,sans-serif;
-      background: rgba(0,0,0,.45); padding: 6px 9px; border-radius: 4px; white-space: nowrap;
+      left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 5px;
+      background: rgba(0,0,0,.48); padding: 7px 9px; border-radius: 5px;
     }
+    .status-row { display: flex; align-items: center; gap: 7px; }
+    .status-icon { width: 18px; text-align: center; font: 16px Arial,sans-serif; }
+    .status-track { width: 112px; height: 8px; overflow: hidden; background: rgba(255,255,255,.22); border-radius: 5px; }
+    .status-fill { height: 100%; width: 100%; border-radius: inherit; transition: width .15s linear; }
+    #health-fill { background: #e34d68; }
+    #hunger-fill { background: #d69a43; }
+    #thirst-fill { background: #49a9df; }
     /* Fallout-подобная лента системных сообщений внизу экрана. */
     #message-log {
       /* Уведомления должны быть поверх окон инвентаря и крафта. */
@@ -226,6 +269,23 @@
       #message-log { width: calc(100% - 120px); bottom: 90px; }
       .game-message { font-size: 7px; padding: 7px 8px; }
     }
+    #death-overlay {
+      display: none; position: absolute; z-index: 50; inset: 0;
+      background: rgba(0,0,0,.78); align-items: center; justify-content: center; padding: 18px;
+    }
+    #death-overlay.open { display: flex; }
+    #death-window {
+      width: min(360px, 100%); padding: 26px 20px; text-align: center;
+      color: #f2f2f2; background: #292929; border: 3px solid #888;
+      box-shadow: 0 10px 35px rgba(0,0,0,.65); border-radius: 5px;
+      font-family: 'PressStart2P', monospace;
+    }
+    #death-window h2 { margin: 0 0 24px; font-size: 18px; line-height: 1.7; }
+    #respawn-button {
+      border: 2px solid #ddd; border-radius: 4px; padding: 13px 18px;
+      color: #fff; background: #555; font: 10px 'PressStart2P', monospace; cursor: pointer;
+    }
+    #respawn-button:active { background: #777; transform: translateY(1px); }
     #inventory-overlay {
       display: none; position: absolute; z-index: 20; inset: 0; background: rgba(0,0,0,.55);
       align-items: center; justify-content: center; padding: 16px;
@@ -302,14 +362,25 @@
       <button id="world-save-button" type="button">СОХРАНИТЬ</button>
       <button id="world-exit-button" type="button">В МИРЫ</button>
     </div>
-    <div id="health-panel">Здоровье: <span id="health-value">100</span>/100</div>
+    <div id="health-panel" aria-label="Состояние персонажа">
+      <div class="status-row" title="Здоровье"><span class="status-icon">💗</span><div class="status-track"><div class="status-fill" id="health-fill"></div></div></div>
+      <div class="status-row" title="Голод"><span class="status-icon">🍗</span><div class="status-track"><div class="status-fill" id="hunger-fill"></div></div></div>
+      <div class="status-row" title="Жажда"><span class="status-icon">💧</span><div class="status-track"><div class="status-fill" id="thirst-fill"></div></div></div>
+    </div>
     <button id="inventory-open" type="button" aria-label="Открыть инвентарь">▦</button>
     <button id="craft-open" type="button" aria-label="Открыть начальный крафт">🔨</button>
+    <button id="dev-open" type="button" aria-label="Открыть меню разработчика" title="Меню разработчика">⚙</button>
     <div id="message-log" aria-live="polite" aria-atomic="false"></div>
     <button id="interact-button" type="button" aria-label="Взаимодействовать с объектом">🖐️</button>
     <button id="action-button" type="button" aria-label="Ударить">
       <span id="action-label">✊</span><span id="action-feedback">💢</span>
     </button>
+    <div id="death-overlay" role="dialog" aria-modal="true" aria-labelledby="death-title">
+      <section id="death-window">
+        <h2 id="death-title">ВЫ ПОГИБЛИ</h2>
+        <button id="respawn-button" type="button">ВОЗРОДИТЬСЯ</button>
+      </section>
+    </div>
     <div id="inventory-overlay" role="dialog" aria-modal="true" aria-label="Инвентарь">
       <section id="inventory-window">
         <div id="inventory-header"><strong>Инвентарь</strong><button id="inventory-close" type="button" aria-label="Закрыть">×</button></div>
@@ -321,6 +392,14 @@
       <section id="craft-window">
         <div id="craft-header"><strong>Верстак — меню крафта</strong><button id="craft-close" type="button" aria-label="Закрыть">×</button></div>
         <div id="craft-recipes"></div>
+      </section>
+    </div>
+    <div id="dev-overlay" role="dialog" aria-modal="true" aria-label="Меню разработчика">
+      <section id="dev-window">
+        <div id="dev-header"><strong>МЕНЮ РАЗРАБОТЧИКА</strong><button id="dev-close" type="button" aria-label="Закрыть">×</button></div>
+        <div id="dev-categories" aria-label="Категории предметов"></div>
+        <div id="dev-items" aria-live="polite"></div>
+        <div id="dev-hint">НАЖМИ НА ПРЕДМЕТ, ЧТОБЫ ДОБАВИТЬ ЕГО В ИНВЕНТАРЬ</div>
       </section>
     </div>
   </main>
@@ -340,7 +419,28 @@
     const inventoryItems = [];
     let selectedQuickSlot = 0;
     let health = 100;
+    let isPlayerDead = false;
+    let respawnX = null;
+    let respawnY = null;
+    let hunger = 100;
+    let hungerElapsed = 0;
+    let starvationDamageElapsed = 0;
+    let starvationMessageShown = false;
+    let thirst = 100;
+    let thirstElapsed = 0;
+    let dehydrationDamageElapsed = 0;
+    let dehydrationMessageShown = false;
     const MAX_HEALTH = 100;
+    const MAX_HUNGER = 100;
+    const HUNGER_TICK_SECONDS = 30;
+    const HUNGER_LOSS = 5;
+    const STARVATION_DAMAGE_INTERVAL = 30;
+    const STARVATION_DAMAGE = 10;
+    const MAX_THIRST = 100;
+    const THIRST_TICK_SECONDS = 30;
+    const THIRST_LOSS = 10;
+    const DEHYDRATION_DAMAGE_INTERVAL = 15;
+    const DEHYDRATION_DAMAGE = 10;
     let activeWorldId = null;
     let activeWorldName = '';
     let saveDatabase = null;
@@ -369,22 +469,16 @@
       furnace: { id: 'furnace', name: 'Горн', icon: 'assets/buildings/Bloomery_1.png', type: 'building' },
       anvil: { id: 'anvil', name: 'Наковальня', icon: 'assets/buildings/anvil_1.png', type: 'building' }
     };
-    // Для тестирования все инструменты сразу доступны в инвентаре.
-    Object.values(TOOL_DEFINITIONS).forEach(tool => {
-      inventoryItems.push({ ...tool, count: 1, durability: 100, maxDurability: 100 });
-    });
-    // Стартовый запас ресурсов для тестирования новых рецептов и механик.
-    inventoryItems.push(
-      { id: 'wood', name: 'Древесина', count: 99, icon: RESOURCE_ICONS.wood },
-      { id: 'stone', name: 'Камень', count: 99, icon: RESOURCE_ICONS.stone },
-      { id: 'coal', name: 'Уголь', count: 99, icon: RESOURCE_ICONS.coal },
-      { id: 'iron_ore', name: 'Железная руда', count: 99, icon: RESOURCE_ICONS.iron_ore }
-    );
+    const MAX_STACK_SIZE = 50;
     const inventoryOverlay = document.getElementById('inventory-overlay');
     const quickSlotsElement = document.getElementById('quick-slots');
     const inventoryQuickElement = document.getElementById('inventory-quick');
     const inventoryGridElement = document.getElementById('inventory-grid');
-    const healthValueElement = document.getElementById('health-value');
+    const healthFillElement = document.getElementById('health-fill');
+    const deathOverlay = document.getElementById('death-overlay');
+    const respawnButton = document.getElementById('respawn-button');
+    const hungerFillElement = document.getElementById('hunger-fill');
+    const thirstFillElement = document.getElementById('thirst-fill');
     const actionButton = document.getElementById('action-button');
     const messageLog = document.getElementById('message-log');
     const MESSAGE_LIFETIME = 2600;
@@ -444,9 +538,12 @@
       if (TOOL_DEFINITIONS[recipe.id]) {
         inventoryItems.push({ ...craftedItem, count: 1, durability: 100, maxDurability: 100 });
       } else {
-        const existing = inventoryItems.find(item => item.id === craftedItem.id);
-        if (existing) existing.count += 1;
-        else inventoryItems.push({ ...craftedItem, count: 1 });
+        const overflow = addStackableItem(craftedItem, 1);
+        if (overflow) {
+          showGameMessage('Нет свободного слота для готового предмета', 'damage');
+          renderInventory();
+          return;
+        }
       }
       renderInventory();
       showGameMessage(`${recipe.name} создан`, 'resource');
@@ -591,13 +688,128 @@
       if (event.target === craftOverlay) craftOverlay.classList.remove('open');
     });
 
-    function addResource(resourceId, amount = 1) {
-      let stack = inventoryItems.find(item => item.id === resourceId);
-      if (!stack) {
-        stack = { id: resourceId, name: RESOURCE_NAMES[resourceId], count: 0, icon: RESOURCE_ICONS[resourceId] };
-        inventoryItems.push(stack);
+    // Меню разработчика: выдаёт только предметы, уже описанные в игровых базах.
+    const devOverlay = document.getElementById('dev-overlay');
+    const devCategoriesElement = document.getElementById('dev-categories');
+    const devItemsElement = document.getElementById('dev-items');
+    const DEV_CATEGORIES = [
+      { id: 'resources', title: 'РЕСУРСЫ' },
+      { id: 'tools', title: 'ИНСТРУМЕНТЫ' },
+      { id: 'buildings', title: 'ПОСТРОЙКИ' }
+    ];
+    let activeDevCategory = 'resources';
+
+    function getDevItems(categoryId) {
+      if (categoryId === 'resources') {
+        return Object.keys(RESOURCE_NAMES).map(id => ({
+          id, name: RESOURCE_NAMES[id], icon: RESOURCE_ICONS[id], category: 'resource'
+        }));
       }
-      stack.count += amount;
+      if (categoryId === 'tools') {
+        return Object.values(TOOL_DEFINITIONS).map(item => ({ ...item, category: 'tool' }));
+      }
+      if (categoryId === 'buildings') {
+        return Object.values(BUILDING_DEFINITIONS).map(item => ({ ...item, category: 'building' }));
+      }
+      return [];
+    }
+
+    // Ресурсы и постройки складываются стопками максимум по 50 единиц.
+    function addStackableItem(item, amount = 1) {
+      let remaining = amount;
+      const stacks = inventoryItems.filter(entry => entry.id === item.id);
+      for (const stack of stacks) {
+        const room = MAX_STACK_SIZE - stack.count;
+        if (room <= 0) continue;
+        const added = Math.min(room, remaining);
+        stack.count += added;
+        remaining -= added;
+        if (remaining <= 0) break;
+      }
+      while (remaining > 0 && inventoryItems.length < 16) {
+        const added = Math.min(MAX_STACK_SIZE, remaining);
+        inventoryItems.push({ id: item.id, name: item.name, icon: item.icon, count: added, ...(item.type ? { type: item.type } : {}) });
+        remaining -= added;
+      }
+      return remaining;
+    }
+
+    function addDeveloperItem(item) {
+      const isTool = item.category === 'tool';
+      if (isTool) {
+        if (inventoryItems.length >= 16) {
+          showGameMessage('Инвентарь заполнен', 'damage');
+          return;
+        }
+        inventoryItems.push({ ...item, count: 1, durability: 100, maxDurability: 100 });
+      } else {
+        const overflow = addStackableItem(item, 1);
+        if (overflow) {
+          showGameMessage('Нет свободного слота в инвентаре', 'damage');
+          return;
+        }
+      }
+
+      renderInventory();
+      markSaveDirty();
+      showGameMessage(`Добавлено: ${item.name} ×1`, 'resource');
+    }
+
+    function renderDeveloperMenu() {
+      devCategoriesElement.replaceChildren();
+      DEV_CATEGORIES.forEach(category => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dev-category' + (category.id === activeDevCategory ? ' active' : '');
+        button.textContent = category.title;
+        button.addEventListener('click', () => {
+          activeDevCategory = category.id;
+          renderDeveloperMenu();
+        });
+        devCategoriesElement.appendChild(button);
+      });
+
+      devItemsElement.replaceChildren();
+      getDevItems(activeDevCategory).forEach(item => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dev-item';
+        if (item.icon) {
+          const image = document.createElement('img');
+          image.src = item.icon;
+          image.alt = '';
+          image.onerror = () => { image.style.display = 'none'; };
+          button.appendChild(image);
+        } else {
+          const fallback = document.createElement('span');
+          fallback.className = 'dev-item-icon';
+          fallback.textContent = '◆';
+          button.appendChild(fallback);
+        }
+        const label = document.createElement('span');
+        label.textContent = item.name;
+        button.appendChild(label);
+        button.addEventListener('click', () => addDeveloperItem(item));
+        devItemsElement.appendChild(button);
+      });
+    }
+
+    document.getElementById('dev-open').addEventListener('click', () => {
+      renderDeveloperMenu();
+      devOverlay.classList.add('open');
+    });
+    document.getElementById('dev-close').addEventListener('click', () => devOverlay.classList.remove('open'));
+    devOverlay.addEventListener('click', event => {
+      if (event.target === devOverlay) devOverlay.classList.remove('open');
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') devOverlay.classList.remove('open');
+    });
+
+    function addResource(resourceId, amount = 1) {
+      const item = { id: resourceId, name: RESOURCE_NAMES[resourceId], icon: RESOURCE_ICONS[resourceId] };
+      const overflow = addStackableItem(item, amount);
+      if (overflow > 0) showGameMessage(`Инвентарь заполнен: не удалось подобрать ${overflow}`, 'damage');
       renderInventory();
       markSaveDirty();
     }
@@ -644,7 +856,18 @@
       if (isQuick) {
         slot.addEventListener('click', () => { selectedQuickSlot = index; renderInventory(); markSaveDirty(); });
       } else if (item) {
-        slot.addEventListener('click', () => { quickSlots[selectedQuickSlot] = item; renderInventory(); markSaveDirty(); });
+        slot.addEventListener('click', () => {
+          // Один и тот же предмет может находиться только в одном быстром слоте.
+          // При назначении в выбранный слот удаляем его из остальных слотов.
+          for (let quickIndex = 0; quickIndex < quickSlots.length; quickIndex++) {
+            if (quickIndex !== selectedQuickSlot && quickSlots[quickIndex] === item) {
+              quickSlots[quickIndex] = null;
+            }
+          }
+          quickSlots[selectedQuickSlot] = item;
+          renderInventory();
+          markSaveDirty();
+        });
       }
       return slot;
     }
@@ -660,7 +883,98 @@
       for (let i = 0; i < 16; i++) {
         inventoryGridElement.appendChild(makeSlot(i, inventoryItems[i] || null, false));
       }
-      healthValueElement.textContent = String(health);
+      updateStatusBars();
+    }
+
+    function updateStatusBars() {
+      healthFillElement.style.width = `${Math.max(0, Math.min(100, health))}%`;
+      hungerFillElement.style.width = `${Math.max(0, Math.min(100, hunger))}%`;
+      thirstFillElement.style.width = `${Math.max(0, Math.min(100, thirst))}%`;
+    }
+
+    function handlePlayerDeath() {
+      if (isPlayerDead) return;
+      isPlayerDead = true;
+      pressed.clear();
+      velocityX = 0;
+      velocityY = 0;
+      deathOverlay.classList.add('open');
+      markSaveDirty();
+    }
+
+    function applyDamage(amount, message) {
+      if (isPlayerDead || health <= 0) return;
+      health = Math.max(0, health - amount);
+      updateStatusBars();
+      markSaveDirty();
+      if (message) showGameMessage(message, 'damage');
+      if (health <= 0) handlePlayerDeath();
+    }
+
+    function respawnPlayer() {
+      if (!isPlayerDead) return;
+      worldX = Number.isFinite(respawnX) ? respawnX : 0;
+      worldY = Number.isFinite(respawnY) ? respawnY : 0;
+      health = MAX_HEALTH;
+      starvationDamageElapsed = 0;
+      dehydrationDamageElapsed = 0;
+      velocityX = 0;
+      velocityY = 0;
+      animationTimer = 0;
+      animationFrame = 0;
+      isPlayerDead = false;
+      deathOverlay.classList.remove('open');
+      updateStatusBars();
+      updateCamera();
+      setPlayerSprite(facing, 0);
+      markSaveDirty();
+      showGameMessage('Вы вернулись к точке возрождения.', 'resource');
+    }
+
+    respawnButton.addEventListener('click', respawnPlayer);
+
+    function updateHunger(dt) {
+      if (!activeWorldId || dt <= 0) return;
+      hungerElapsed += dt;
+      while (hungerElapsed >= HUNGER_TICK_SECONDS && hunger > 0) {
+        hungerElapsed -= HUNGER_TICK_SECONDS;
+        hunger = Math.max(0, hunger - HUNGER_LOSS);
+        updateStatusBars();
+        markSaveDirty();
+      }
+      if (hunger <= 0) {
+        if (!starvationMessageShown) {
+          starvationMessageShown = true;
+          showGameMessage('Вы голодны', 'damage');
+        }
+        starvationDamageElapsed += dt;
+        while (starvationDamageElapsed >= STARVATION_DAMAGE_INTERVAL) {
+          starvationDamageElapsed -= STARVATION_DAMAGE_INTERVAL;
+          applyDamage(STARVATION_DAMAGE, `Голод: получено ${STARVATION_DAMAGE} урона.`);
+        }
+      }
+    }
+
+    function updateThirst(dt) {
+      if (!activeWorldId || dt <= 0) return;
+      thirstElapsed += dt;
+      while (thirstElapsed >= THIRST_TICK_SECONDS && thirst > 0) {
+        thirstElapsed -= THIRST_TICK_SECONDS;
+        thirst = Math.max(0, thirst - THIRST_LOSS);
+        updateStatusBars();
+        markSaveDirty();
+      }
+      if (thirst <= 0) {
+        if (!dehydrationMessageShown) {
+          dehydrationMessageShown = true;
+          showGameMessage('Вы обезвожены', 'damage');
+        }
+        dehydrationDamageElapsed += dt;
+        while (dehydrationDamageElapsed >= DEHYDRATION_DAMAGE_INTERVAL) {
+          dehydrationDamageElapsed -= DEHYDRATION_DAMAGE_INTERVAL;
+          applyDamage(DEHYDRATION_DAMAGE, `Жажда: получено ${DEHYDRATION_DAMAGE} урона.`);
+        }
+      }
     }
 
     document.getElementById('inventory-open').addEventListener('click', () => inventoryOverlay.classList.add('open'));
@@ -870,6 +1184,8 @@
         worldX = 0;
         worldY = 0;
       }
+      respawnX = worldX;
+      respawnY = worldY;
       velocityX = 0;
       velocityY = 0;
       updateCamera();
@@ -996,26 +1312,21 @@
         return;
       }
 
-      if (objectType === 'furnace' || objectType === 'anvil') {
-        showGameMessage('Этот мастерской объект нельзя разрушить таким способом.', 'damage');
-        return;
-      }
-      const targetKind = objectType === 'workbench'
-        ? 'workbench'
-        : (objectType.startsWith('tree') ? 'tree' : 'rock');
+      const isBuilding = Boolean(BUILDING_DEFINITIONS[objectType]);
+      const targetKind = isBuilding ? 'building' : (objectType.startsWith('tree') ? 'tree' : 'rock');
       const targetName = targetKind === 'tree' ? 'дереву'
-        : targetKind === 'rock' ? 'камню' : 'верстаку';
+        : targetKind === 'rock' ? 'камню' : BUILDING_DEFINITIONS[objectType].name.toLowerCase();
       const selectedItem = quickSlots[selectedQuickSlot];
       const isAxe = Boolean(selectedItem?.toolFor === 'tree');
       const isPickaxe = Boolean(selectedItem?.toolFor === 'rock');
 
-      // Верстак нельзя разбирать киркой: действие прекращается без урона и прогресса.
-      if (targetKind === 'workbench' && isPickaxe) {
-        showGameMessage('Я не могу сломать верстак киркой.', 'damage');
+      // Любую установленную постройку можно разрушить топором; кирка для этого не подходит.
+      if (isBuilding && isPickaxe) {
+        showGameMessage('Постройку нельзя разрушить киркой. Нужен топор.', 'damage');
         return;
       }
 
-      const correctTool = targetKind === 'workbench'
+      const correctTool = isBuilding
         ? (isAxe ? selectedItem : null)
         : (selectedItem?.toolFor === targetKind ? selectedItem : null);
 
@@ -1023,8 +1334,7 @@
         showGameMessage(`Вы ударили по ${targetName} инструментом: ${correctTool.name}.`, 'resource');
       } else {
         showGameMessage(`Вы ударили по ${targetName} рукой.`, 'damage');
-        health = Math.max(0, health - HIT_HEALTH_COST);
-        showGameMessage(`Вы получили ${HIT_HEALTH_COST} урона.`, 'damage');
+        applyDamage(HIT_HEALTH_COST, `Вы получили ${HIT_HEALTH_COST} урона.`);
       }
 
       if (selectedItem && Number.isFinite(selectedItem.durability)) {
@@ -1046,11 +1356,11 @@
       const required = objectHitRequired[row][col] || (targetKind === 'tree' ? 2 : 3);
 
       if (objectHitProgress[row][col] >= required) {
-        // Верстак всегда возвращает одну древесину; инструменты не увеличивают добычу.
-        const amount = targetKind === 'workbench' ? 1 : (correctTool ? correctTool.yield : 1);
+        // Любая постройка возвращает одну древесину, как и верстак.
+        const amount = isBuilding ? 1 : (correctTool ? correctTool.yield : 1);
         const resourceId = targetKind === 'rock' ? 'stone' : 'wood';
         addResource(resourceId, amount);
-        const destroyedName = targetKind === 'tree' ? 'Дерево' : targetKind === 'rock' ? 'Камень' : 'Верстак';
+        const destroyedName = targetKind === 'tree' ? 'Дерево' : targetKind === 'rock' ? 'Камень' : BUILDING_DEFINITIONS[objectType].name;
         showGameMessage(`${destroyedName} разрушен.`, 'resource');
         showGameMessage(`Получено: ${RESOURCE_NAMES[resourceId]} +${amount}.`, 'resource');
 
@@ -1071,7 +1381,7 @@
         const objectCell = objectElements[row]?.[col];
         if (objectCell) objectCell.replaceChildren();
       }
-      healthValueElement.textContent = String(health);
+      updateStatusBars();
       markSaveDirty();
     }
     function performAction() { const selected = quickSlots[selectedQuickSlot]; if (selected && BUILDING_DEFINITIONS[selected.id]) placeBuilding(selected.id); else performHit(); }
@@ -1162,7 +1472,17 @@
     }
     interactButton.addEventListener('click', performInteraction); 
     actionButton.addEventListener('click', performAction);
+
+    // Не перехватываем игровые клавиши, когда пользователь вводит текст
+    // (например, название мира в меню сохранений).
+    function isTextEntryTarget(target) {
+      return target instanceof HTMLElement && (
+        target.isContentEditable || target.matches('input, textarea, select')
+      );
+    }
+
     window.addEventListener('keydown', event => {
+      if (isTextEntryTarget(event.target)) return;
       if (event.key >= '1' && event.key <= '4') {
         selectedQuickSlot = Number(event.key) - 1;
         renderInventory();
@@ -1199,6 +1519,7 @@
     });
 
     window.addEventListener('keydown', (event) => {
+      if (isTextEntryTarget(event.target)) return;
       const direction = keyDirections[event.code];
       if (!direction) return;
       event.preventDefault();
@@ -1207,8 +1528,10 @@
     window.addEventListener('keyup', (event) => {
       const direction = keyDirections[event.code];
       if (!direction) return;
-      event.preventDefault();
+      // Снимаем удержание даже если фокус успел перейти в текстовое поле.
       pressed.delete(direction);
+      if (isTextEntryTarget(event.target)) return;
+      event.preventDefault();
     });
     window.addEventListener('blur', () => pressed.clear());
     document.addEventListener('visibilitychange', () => {
@@ -1219,6 +1542,15 @@
     function frame(time) {
       const dt = previousTime ? Math.min((time - previousTime) / 1000, 0.033) : 0;
       previousTime = time;
+      if (!isPlayerDead) {
+        updateHunger(dt);
+        updateThirst(dt);
+      }
+      if (isPlayerDead) {
+        previousTime = time;
+        requestAnimationFrame(frame);
+        return;
+      }
 
       let inputX = (pressed.has('right') ? 1 : 0) - (pressed.has('left') ? 1 : 0);
       let inputY = (pressed.has('down') ? 1 : 0) - (pressed.has('up') ? 1 : 0);
@@ -1326,19 +1658,24 @@
     }
 
     function makeStarterInventory() {
+      // Новый мир начинается с полностью пустого инвентаря.
       inventoryItems.splice(0, inventoryItems.length);
-      Object.values(TOOL_DEFINITIONS).forEach(tool => {
-        inventoryItems.push({ ...tool, count: 1, durability: 100, maxDurability: 100 });
-      });
-      inventoryItems.push(
-        { id: 'wood', name: 'Древесина', count: 99, icon: RESOURCE_ICONS.wood },
-        { id: 'stone', name: 'Камень', count: 99, icon: RESOURCE_ICONS.stone },
-        { id: 'coal', name: 'Уголь', count: 99, icon: RESOURCE_ICONS.coal },
-        { id: 'iron_ore', name: 'Железная руда', count: 99, icon: RESOURCE_ICONS.iron_ore }
-      );
       quickSlots.fill(null);
       selectedQuickSlot = 0;
       health = MAX_HEALTH;
+      isPlayerDead = false;
+      deathOverlay.classList.remove('open');
+      respawnX = null;
+      respawnY = null;
+      hunger = MAX_HUNGER;
+      hungerElapsed = 0;
+      starvationDamageElapsed = 0;
+      starvationMessageShown = false;
+      thirst = MAX_THIRST;
+      thirstElapsed = 0;
+      dehydrationDamageElapsed = 0;
+      dehydrationMessageShown = false;
+      updateStatusBars();
     }
 
     function serializeWorldState() {
@@ -1355,7 +1692,10 @@
           hitRequired: objectHitRequired.map(row => row.slice())
         },
         player: {
-          x: worldX, y: worldY, health,
+          x: worldX, y: worldY, health, hunger,
+          respawnX, respawnY,
+          hungerElapsed, starvationDamageElapsed,
+          thirst, thirstElapsed, dehydrationDamageElapsed,
           facing,
           selectedQuickSlot,
           quickIndexes
@@ -1600,7 +1940,39 @@
       selectedQuickSlot = Math.max(0, Math.min(3, state.player.selectedQuickSlot || 0));
       worldX = state.player.x;
       worldY = state.player.y;
+      if (Number.isFinite(state.player.respawnX) && Number.isFinite(state.player.respawnY)) {
+        respawnX = state.player.respawnX;
+        respawnY = state.player.respawnY;
+      } else {
+        // Для старых сохранений восстанавливаем исходную точку появления в центре карты.
+        const rows = objectMap.length;
+        const columns = objectMap[0]?.length || 0;
+        const centerRow = Math.floor(rows / 2);
+        const centerCol = Math.floor(columns / 2);
+        let spawn = null;
+        for (let radius = 0; radius < Math.max(rows, columns) && !spawn; radius++) {
+          for (let row = Math.max(0, centerRow - radius); row <= Math.min(rows - 1, centerRow + radius) && !spawn; row++) {
+            for (let col = Math.max(0, centerCol - radius); col <= Math.min(columns - 1, centerCol + radius); col++) {
+              if (objectMap[row][col] === null) { spawn = { row, col }; break; }
+            }
+          }
+        }
+        respawnX = spawn ? (spawn.col + 0.5) * 64 - columns * 64 / 2 : 0;
+        respawnY = spawn ? (spawn.row + 0.5) * 64 - rows * 64 / 2 : 0;
+      }
+      isPlayerDead = false;
+      deathOverlay.classList.remove('open');
       health = Math.max(0, Math.min(MAX_HEALTH, Number(state.player.health) || 0));
+      if (health <= 0) health = MAX_HEALTH;
+      hunger = Math.max(0, Math.min(MAX_HUNGER, Number.isFinite(state.player.hunger) ? state.player.hunger : MAX_HUNGER));
+      hungerElapsed = Math.max(0, Math.min(HUNGER_TICK_SECONDS, Number(state.player.hungerElapsed) || 0));
+      starvationDamageElapsed = Math.max(0, Math.min(STARVATION_DAMAGE_INTERVAL, Number(state.player.starvationDamageElapsed) || 0));
+      starvationMessageShown = hunger <= 0;
+      thirst = Math.max(0, Math.min(MAX_THIRST, Number.isFinite(state.player.thirst) ? state.player.thirst : MAX_THIRST));
+      thirstElapsed = Math.max(0, Math.min(THIRST_TICK_SECONDS, Number(state.player.thirstElapsed) || 0));
+      dehydrationDamageElapsed = Math.max(0, Math.min(DEHYDRATION_DAMAGE_INTERVAL, Number(state.player.dehydrationDamageElapsed) || 0));
+      dehydrationMessageShown = thirst <= 0;
+      updateStatusBars();
       facing = ['up','down','left','right'].includes(state.player.facing) ? state.player.facing : 'down';
       velocityX = 0;
       velocityY = 0;
@@ -1631,6 +2003,7 @@
       pressed.clear();
       inventoryOverlay.classList.remove('open');
       craftOverlay.classList.remove('open');
+      devOverlay.classList.remove('open');
       document.getElementById('game').style.display = 'none';
       worldMenu.hidden = false;
       await refreshWorldMenu();
