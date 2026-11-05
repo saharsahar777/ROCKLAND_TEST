@@ -70,6 +70,7 @@
     #placement-preview.valid { border-color:#35e65b; background:rgba(35,220,75,.28); }
 
     #actors-layer { position: absolute; inset: 0; pointer-events: none; }
+    .good-mob { position:absolute; width:64px; height:64px; transform:translate(-50%, -50%); object-fit:contain; image-rendering:pixelated; pointer-events:none; user-select:none; -webkit-user-drag:none; }
     #player {
       position: absolute; left: 0; top: 0; width: 64px; height: 64px;
       transform: translate(-50%, -50%); image-rendering: pixelated;
@@ -453,7 +454,7 @@
     const SAVE_INTERVAL_MS = 60000;
     const SAVE_DB_NAME = 'RockLandSaveDB';
     const SAVE_DB_VERSION = 1;
-    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток' };
+    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток', raw_pork: 'Сырая свинина', cooked_pork: 'Жареная свинина' };
     const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png' };
     // Инструменты и оружие имеют индивидуальную прочность: 100 единиц при создании.
     const TOOL_DEFINITIONS = {
@@ -832,7 +833,7 @@
         } else {
           const icon = document.createElement('span');
           icon.className = 'item-icon';
-          icon.textContent = item.id === 'workbench' ? 'В' : item.id === 'furnace' ? 'Г' : item.id === 'anvil' ? 'Н' : '•';
+          icon.textContent = item.id === 'workbench' ? 'В' : item.id === 'furnace' ? 'Г' : item.id === 'anvil' ? 'Н' : item.id === 'raw_pork' ? 'С' : item.id === 'cooked_pork' ? 'Ж' : '•';
           icon.style.fontSize = '18px';
           slot.appendChild(icon);
         }
@@ -1000,6 +1001,15 @@
     let objectHitProgress = [];
     let objectHitRequired = [];
     let objectElements = [];
+    let pigMobs = [];
+    const PIG_SPRITES = {
+      left:  [1, 2, 3, 4].map(n => `assets/good_mob/pig_${n}.png`),
+      right: [5, 6, 7, 8].map(n => `assets/good_mob/pig_${n}.png`),
+      up:    [9, 10, 11, 12].map(n => `assets/good_mob/pig_${n}.png`),
+      down:  [13, 14, 15, 16].map(n => `assets/good_mob/pig_${n}.png`)
+    };
+    const PIG_SPEED = 34;
+    const PIG_FRAME_DURATION = 0.18;
     let worldColumns = 0;
     let worldRows = 0;
     let worldPixelWidth = 0;
@@ -1159,6 +1169,7 @@
       // replaceChildren очищает слой, поэтому возвращаем игрока после генерации клеток.
       objectsLayer.appendChild(player);
       objectsLayer.appendChild(placementPreview);
+      pigMobs = [];
       for (const layer of [terrainLayer, objectsLayer]) {
         layer.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
         layer.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
@@ -1188,7 +1199,141 @@
       respawnY = worldY;
       velocityX = 0;
       velocityY = 0;
+      spawnPigMobs();
       updateCamera();
+    }
+
+    function isPigCellFree(row, col) {
+      return row >= 0 && col >= 0 && row < worldRows && col < worldColumns &&
+        (worldMap[row][col] === 1 || worldMap[row][col] === 2) && objectMap[row][col] === null;
+    }
+
+    function spawnPigMobs() {
+      pigMobs = [];
+      const candidates = [];
+      for (let row = 1; row < worldRows - 1; row++) {
+        for (let col = 1; col < worldColumns - 1; col++) {
+          if (!isPigCellFree(row, col)) continue;
+          // Предпочитаем открытые клетки рядом с лесом, но не внутри деревьев.
+          let nearForest = false;
+          for (let dy = -2; dy <= 2 && !nearForest; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              const object = objectMap[row + dy]?.[col + dx];
+              if (object === 'tree1' || object === 'tree2') { nearForest = true; break; }
+            }
+          }
+          if (nearForest) candidates.push({ row, col });
+        }
+      }
+      // Если подходящих опушек мало, используем любые свободные клетки равнин.
+      if (candidates.length < 3) {
+        for (let row = 1; row < worldRows - 1; row++) {
+          for (let col = 1; col < worldColumns - 1; col++) {
+            if (isPigCellFree(row, col) && !candidates.some(c => c.row === row && c.col === col)) candidates.push({ row, col });
+          }
+        }
+      }
+      const wanted = 3 + Math.floor(Math.random() * 3);
+      for (let attempt = 0; attempt < wanted * 20 && pigMobs.length < wanted && candidates.length; attempt++) {
+        const index = Math.floor(Math.random() * candidates.length);
+        const cell = candidates.splice(index, 1)[0];
+        if (pigMobs.some(p => Math.hypot(p.homeX - (cell.col + 0.5) * 64, p.homeY - (cell.row + 0.5) * 64) < 5 * 64)) continue;
+        const x = (cell.col + 0.5) * 64;
+        const y = (cell.row + 0.5) * 64;
+        const pig = {
+          x, y, homeX: x, homeY: y,
+          roamRadius: (5 + Math.floor(Math.random() * 6)) * 64,
+          targetX: x, targetY: y,
+          direction: 'down', frame: 0, frameTimer: 0,
+          waitTimer: Math.random() * 2,
+          health: 30, fleeTimer: 0,
+          element: document.createElement('img')
+        };
+        pig.element.className = 'good-mob';
+        pig.element.alt = '';
+        pig.element.draggable = false;
+        pig.element.src = PIG_SPRITES.down[0];
+        pig.element.onerror = () => console.error(`Не удалось загрузить спрайт свиньи: ${pig.element.src}`);
+        objectsLayer.appendChild(pig.element);
+        pigMobs.push(pig);
+      }
+      updatePigSpritesAndPositions();
+    }
+
+    function updatePigSpritesAndPositions() {
+      for (const pig of pigMobs) {
+        pig.element.style.left = `${pig.x}px`;
+        pig.element.style.top = `${pig.y}px`;
+        pig.element.style.zIndex = String(Math.floor(pig.y + 24));
+      }
+    }
+
+    function choosePigTarget(pig) {
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = (1 + Math.random() * 3) * 64;
+        const x = pig.homeX + Math.cos(angle) * Math.random() * pig.roamRadius;
+        const y = pig.homeY + Math.sin(angle) * Math.random() * pig.roamRadius;
+        const col = Math.floor(x / 64), row = Math.floor(y / 64);
+        if (!isPigCellFree(row, col)) continue;
+        if (Math.hypot(x - pig.x, y - pig.y) < 28) continue;
+        // Не выбираем цель слишком далеко за один переход: свинья гуляет короткими отрезками.
+        const targetX = pig.x + (x - pig.x) / Math.max(1, Math.hypot(x - pig.x, y - pig.y)) * Math.min(distance, Math.hypot(x - pig.x, y - pig.y));
+        const targetY = pig.y + (y - pig.y) / Math.max(1, Math.hypot(x - pig.x, y - pig.y)) * Math.min(distance, Math.hypot(x - pig.x, y - pig.y));
+        const targetCol = Math.floor(targetX / 64), targetRow = Math.floor(targetY / 64);
+        if (!isPigCellFree(targetRow, targetCol)) continue;
+        pig.targetX = targetX;
+        pig.targetY = targetY;
+        return;
+      }
+      pig.waitTimer = 1 + Math.random() * 2;
+    }
+
+    function updatePigMobs(dt) {
+      if (!activeWorldId || !pigMobs.length || dt <= 0) return;
+      const playerX = worldPixelWidth / 2 + worldX;
+      const playerY = worldPixelHeight / 2 + worldY;
+      for (const pig of pigMobs) {
+        if (pig.fleeTimer > 0) {
+          pig.fleeTimer = Math.max(0, pig.fleeTimer - dt);
+          if (pig.fleeTimer === 0) { choosePigTarget(pig); continue; }
+          const awayX = pig.x - playerX, awayY = pig.y - playerY;
+          const len = Math.max(1, Math.hypot(awayX, awayY));
+          const step = Math.min(110 * dt, Math.hypot(pig.targetX - pig.x, pig.targetY - pig.y));
+          const nx = pig.x + awayX / len * step;
+          const ny = pig.y + awayY / len * step;
+          const col = Math.floor(nx / 64), row = Math.floor(ny / 64);
+          if (isPigCellFree(row, col)) { pig.x = nx; pig.y = ny; }
+          else { pig.fleeTimer = 0; }
+          pig.direction = Math.abs(awayX) > Math.abs(awayY) ? (awayX < 0 ? 'left' : 'right') : (awayY < 0 ? 'up' : 'down');
+          pig.frameTimer += dt;
+          if (pig.frameTimer >= PIG_FRAME_DURATION) { pig.frameTimer %= PIG_FRAME_DURATION; pig.frame = (pig.frame + 1) % 4; }
+          pig.element.src = PIG_SPRITES[pig.direction][pig.frame];
+          continue;
+        }
+        const dx = pig.targetX - pig.x;
+        const dy = pig.targetY - pig.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 4) {
+          pig.waitTimer -= dt;
+          pig.frame = 0;
+          if (pig.waitTimer <= 0) { pig.waitTimer = 0.7 + Math.random() * 2.2; choosePigTarget(pig); }
+          continue;
+        }
+        const step = Math.min(distance, PIG_SPEED * dt);
+        const nx = pig.x + dx / distance * step;
+        const ny = pig.y + dy / distance * step;
+        const col = Math.floor(nx / 64), row = Math.floor(ny / 64);
+        if (!isPigCellFree(row, col) || Math.hypot(nx - pig.homeX, ny - pig.homeY) > pig.roamRadius) {
+          pig.targetX = pig.x; pig.targetY = pig.y; pig.waitTimer = 0.5 + Math.random(); continue;
+        }
+        pig.x = nx; pig.y = ny;
+        pig.direction = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+        pig.frameTimer += dt;
+        if (pig.frameTimer >= PIG_FRAME_DURATION) { pig.frameTimer %= PIG_FRAME_DURATION; pig.frame = (pig.frame + 1) % 4; }
+        pig.element.src = PIG_SPRITES[pig.direction][pig.frame];
+      }
+      updatePigSpritesAndPositions();
     }
 
     function updateCamera() {
@@ -1228,6 +1373,10 @@
           if (row < 0 || col < 0 || row >= worldRows || col >= worldColumns) return true;
           if (objectMap[row]?.[col]) return true;
         }
+      }
+      const playerCenterX = centerX, playerCenterY = centerY;
+      for (const pig of pigMobs) {
+        if (Math.abs(playerCenterX - pig.x) < (half + 22) && Math.abs(playerCenterY - pig.y) < (half + 22)) return true;
       }
       return false;
     }
@@ -1306,6 +1455,38 @@
       const objectType = objectMap[row]?.[col];
       actionButton.classList.add('hit');
       hitFeedbackTimer = 0.18;
+
+      // Животные обрабатываются отдельно: добыча дерева и камня ниже остаётся без изменений.
+      const targetCenterX = (col + 0.5) * 64;
+      const targetCenterY = (row + 0.5) * 64;
+      const pigIndex = pigMobs.findIndex(pig => Math.hypot(pig.x - targetCenterX, pig.y - targetCenterY) < 46);
+      if (pigIndex >= 0) {
+        const pig = pigMobs[pigIndex];
+        pig.health = Math.max(0, (Number.isFinite(pig.health) ? pig.health : 30) - 5);
+        showGameMessage(`Удар кулаком: свинья −5 HP (${pig.health}/30).`, 'damage');
+        if (pig.health <= 0) {
+          pig.element.remove();
+          pigMobs.splice(pigIndex, 1);
+          addResource('raw_pork', 1);
+          showGameMessage('Получено: Сырая свинина +1.', 'resource');
+        } else {
+          const playerWorldX = worldPixelWidth / 2 + worldX;
+          const playerWorldY = worldPixelHeight / 2 + worldY;
+          const awayX = pig.x - playerWorldX, awayY = pig.y - playerWorldY;
+          const len = Math.max(1, Math.hypot(awayX, awayY));
+          const knockX = pig.x + awayX / len * 64;
+          const knockY = pig.y + awayY / len * 64;
+          const knockCol = Math.floor(knockX / 64), knockRow = Math.floor(knockY / 64);
+          if (isPigCellFree(knockRow, knockCol)) { pig.x = knockX; pig.y = knockY; }
+          pig.fleeTimer = 3;
+          pig.targetX = pig.x + awayX / len * 220;
+          pig.targetY = pig.y + awayY / len * 220;
+          pig.waitTimer = 0;
+          updatePigSpritesAndPositions();
+        }
+        markSaveDirty();
+        return;
+      }
 
       if (!objectType) {
         showGameMessage('Перед вами нет объекта для удара.', 'damage');
@@ -1552,6 +1733,8 @@
         return;
       }
 
+      updatePigMobs(dt);
+
       let inputX = (pressed.has('right') ? 1 : 0) - (pressed.has('left') ? 1 : 0);
       let inputY = (pressed.has('down') ? 1 : 0) - (pressed.has('up') ? 1 : 0);
       const inputLength = Math.hypot(inputX, inputY);
@@ -1689,7 +1872,8 @@
           terrain: worldMap.map(row => row.slice()),
           objects: objectMap.map(row => row.slice()),
           hitProgress: objectHitProgress.map(row => row.slice()),
-          hitRequired: objectHitRequired.map(row => row.slice())
+          hitRequired: objectHitRequired.map(row => row.slice()),
+          mobs: pigMobs.map(({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }) => ({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }))
         },
         player: {
           x: worldX, y: worldY, health, hunger,
@@ -1978,6 +2162,17 @@
       velocityY = 0;
       renderWorldFromState();
       renderInventory();
+      if (Array.isArray(state.world.mobs) && state.world.mobs.length) {
+        pigMobs = state.world.mobs.map(data => {
+          const pig = { health: 30, fleeTimer: 0, ...data, element: document.createElement('img') };
+          pig.element.className = 'good-mob'; pig.element.alt = ''; pig.element.draggable = false;
+          pig.element.src = (PIG_SPRITES[pig.direction] || PIG_SPRITES.down)[pig.frame % 4];
+          pig.element.onerror = () => console.error(`Не удалось загрузить спрайт свиньи: ${pig.element.src}`);
+          objectsLayer.appendChild(pig.element);
+          return pig;
+        });
+        updatePigSpritesAndPositions();
+      } else { spawnPigMobs(); }
       currentSprite = '';
       setPlayerSprite(facing, 0);
       saveDirty = false;
@@ -2046,7 +2241,7 @@
     // ------------------ КОНЕЦ СИСТЕМЫ СОХРАНЕНИЙ ------------------
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(PIG_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
