@@ -230,6 +230,13 @@
       border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(190,190,190,.92);
       color: #333; font-size: 25px; cursor: pointer; user-select: none; touch-action: manipulation;
     }
+    #eat-button {
+      position: absolute; z-index: 7; right: max(14px, env(safe-area-inset-right));
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + (var(--pad-size) * 2) + 20px);
+      width: var(--pad-size); height: var(--pad-size);
+      border: 1px solid #d4d4d4; border-radius: 5px; background: rgba(190,190,190,.92);
+      color: #333; font-size: 25px; cursor: pointer; user-select: none; touch-action: manipulation;
+    }
     #action-feedback { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-size: 28px; }
     #action-button.hit #action-feedback { display: flex; }
     #action-button.hit #action-label { display: none; }
@@ -372,6 +379,7 @@
     <button id="craft-open" type="button" aria-label="Открыть начальный крафт">🔨</button>
     <button id="dev-open" type="button" aria-label="Открыть меню разработчика" title="Меню разработчика">⚙</button>
     <div id="message-log" aria-live="polite" aria-atomic="false"></div>
+    <button id="eat-button" type="button" aria-label="Съесть еду" title="Съесть выбранную еду (F)">🍖</button>
     <button id="interact-button" type="button" aria-label="Взаимодействовать с объектом">🖐️</button>
     <button id="action-button" type="button" aria-label="Ударить">
       <span id="action-label">✊</span><span id="action-feedback">💢</span>
@@ -455,7 +463,7 @@
     const SAVE_DB_NAME = 'RockLandSaveDB';
     const SAVE_DB_VERSION = 1;
     const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток', raw_pork: 'Сырая свинина', cooked_pork: 'Жареная свинина' };
-    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png' };
+    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png', raw_pork: 'assets/food/pork_1.png', cooked_pork: 'assets/food/pork_2.png' };
     // Инструменты и оружие имеют индивидуальную прочность: 100 единиц при создании.
     const TOOL_DEFINITIONS = {
       stone_axe: { id: 'stone_axe', name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: 'assets/tools/axe_1.png' },
@@ -825,9 +833,10 @@
         number.className = 'slot-number'; number.textContent = String(index + 1); slot.appendChild(number);
       }
       if (item) {
-        if (item.icon) {
+        const itemIcon = item.icon || RESOURCE_ICONS[item.id];
+        if (itemIcon) {
           const icon = document.createElement('img');
-          icon.className = 'item-icon'; icon.src = item.icon; icon.alt = item.name;
+          icon.className = 'item-icon'; icon.src = itemIcon; icon.alt = item.name;
           icon.onerror = () => { icon.style.display = 'none'; };
           slot.appendChild(icon);
         } else {
@@ -1565,7 +1574,82 @@
       updateStatusBars();
       markSaveDirty();
     }
-    function performAction() { const selected = quickSlots[selectedQuickSlot]; if (selected && BUILDING_DEFINITIONS[selected.id]) placeBuilding(selected.id); else performHit(); }
+    const FOOD_EFFECTS = {
+      raw_pork: { hunger: 5, health: 0 },
+      cooked_pork: { hunger: 25, health: 20 }
+    };
+
+    function consumeSelectedFood(foodItem, effects) {
+      // Сверяем быстрый слот с актуальным предметом в инвентаре.
+      const inventoryItem = inventoryItems.find(entry => entry.id === foodItem?.id && entry.count > 0);
+      const itemToConsume = inventoryItem || foodItem;
+      if (!itemToConsume || !Number.isFinite(itemToConsume.count) || itemToConsume.count <= 0) {
+        showGameMessage('Этой еды больше нет в инвентаре.', 'damage');
+        return;
+      }
+
+      itemToConsume.count -= 1;
+      hunger = Math.min(MAX_HUNGER, hunger + effects.hunger);
+      health = Math.min(MAX_HEALTH, health + effects.health);
+
+      if (itemToConsume.count <= 0) {
+        const itemIndex = inventoryItems.indexOf(itemToConsume);
+        if (itemIndex >= 0) inventoryItems.splice(itemIndex, 1);
+        for (let slotIndex = 0; slotIndex < quickSlots.length; slotIndex++) {
+          if (quickSlots[slotIndex]?.id === itemToConsume.id) quickSlots[slotIndex] = null;
+        }
+      } else {
+        for (let slotIndex = 0; slotIndex < quickSlots.length; slotIndex++) {
+          if (quickSlots[slotIndex]?.id === itemToConsume.id) quickSlots[slotIndex] = itemToConsume;
+        }
+      }
+
+      renderInventory();
+      updateStatusBars();
+      const restored = [];
+      if (effects.hunger > 0) restored.push(`голод +${effects.hunger}`);
+      if (effects.health > 0) restored.push(`здоровье +${effects.health}`);
+      showGameMessage(`Съедено: ${itemToConsume.name}. Восстановлено: ${restored.join(', ')}.`, 'resource');
+      markSaveDirty();
+    }
+
+    function performAction() {
+      const selected = quickSlots[selectedQuickSlot];
+      if (selected && BUILDING_DEFINITIONS[selected.id]) {
+        placeBuilding(selected.id);
+        return;
+      }
+
+      const foodEffects = selected ? FOOD_EFFECTS[selected.id] : null;
+      if (foodEffects) {
+        const target = getPlacementTarget();
+        const objectType = objectMap[target.row]?.[target.col];
+        const targetCenterX = (target.col + 0.5) * 64;
+        const targetCenterY = (target.row + 0.5) * 64;
+        const pigInFront = pigMobs.some(pig => Math.hypot(pig.x - targetCenterX, pig.y - targetCenterY) < 46);
+        if (objectType || pigInFront) {
+          performHit();
+          return;
+        }
+        consumeSelectedFood(selected, foodEffects);
+        return;
+      }
+
+      performHit();
+    }
+
+    function performEat() {
+      const selected = quickSlots[selectedQuickSlot];
+      const effects = selected ? FOOD_EFFECTS[selected.id] : null;
+      if (!effects) {
+        showGameMessage('Выберите свинину в быстром слоте.', 'damage');
+        return;
+      }
+      consumeSelectedFood(selected, effects);
+    }
+
+    const eatButton = document.getElementById('eat-button');
+    eatButton.addEventListener('click', performEat);
 
     const interactButton = document.getElementById('interact-button');
     function performInteraction() {
@@ -1584,16 +1668,17 @@
       }
       if (objectType === 'furnace' || objectType === 'anvil') {
         const isFurnace = objectType === 'furnace';
-        craftTitleElement.textContent = isFurnace ? 'Горн — рецепты выплавки' : 'Наковальня — рецепты ковки';
+        craftTitleElement.textContent = isFurnace ? 'Горн — рецепты' : 'Наковальня — рецепты ковки';
         craftRecipesElement.replaceChildren();
         const heading = document.createElement('h3');
         heading.className = 'craft-section-title';
-        heading.textContent = isFurnace ? 'РЕЦЕПТЫ ВЫПЛАВКИ' : 'РЕЦЕПТЫ КОВКИ';
+        heading.textContent = isFurnace ? 'РЕЦЕПТЫ ГОРНА' : 'РЕЦЕПТЫ КОВКИ';
         craftRecipesElement.appendChild(heading);
         const stationRecipes = isFurnace
           ? [
               { id: 'iron_ingot', name: 'Железный слиток', ingredients: { iron_ore: 2, wood: 1 }, action: '🔥 ВЫПЛАВИТЬ' },
-              { id: 'steel_ingot', name: 'Стальной слиток', ingredients: { iron_ingot: 1, coal: 1 }, action: '🔥 ВЫПЛАВИТЬ' }
+              { id: 'steel_ingot', name: 'Стальной слиток', ingredients: { iron_ingot: 1, coal: 1 }, action: '🔥 ВЫПЛАВИТЬ' },
+              { id: 'cooked_pork', name: 'Жареная свинина', ingredients: { raw_pork: 1, wood: 1 }, action: '🔥 ПРИГОТОВИТЬ' }
             ]
           : [
               { id: 'iron_axe', name: 'Железный топор', ingredients: { iron_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
@@ -1670,6 +1755,7 @@
       }
       if (event.code === 'Space' && !event.repeat) { event.preventDefault(); performAction(); }
       if (event.code === 'KeyE' && !event.repeat) { event.preventDefault(); performInteraction(); }
+      if (event.code === 'KeyF' && !event.repeat) { event.preventDefault(); performEat(); }
       if (event.key === 'Escape') {
         inventoryOverlay.classList.remove('open');
         craftOverlay.classList.remove('open');
