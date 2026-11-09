@@ -474,6 +474,10 @@
       iron_pickaxe: { id: 'iron_pickaxe', name: 'Железная кирка', toolFor: 'rock', tier: 2, yield: 2, icon: 'assets/tools/pickaxe_2.png' },
       steel_pickaxe: { id: 'steel_pickaxe', name: 'Стальная кирка', toolFor: 'rock', tier: 3, yield: 3, icon: 'assets/tools/pickaxe_3.png' }
     };
+    const WEAPON_DEFINITIONS = {
+      iron_sword: { id: 'iron_sword', name: 'Железный меч', damage: 20, icon: 'assets/tools/iron_sword_1.png', category: 'weapon' },
+      steel_sword: { id: 'steel_sword', name: 'Стальной меч', damage: 30, icon: 'assets/tools/steel_sword_1.png', category: 'weapon' }
+    };
     const BUILDING_DEFINITIONS = {
       workbench: { id: 'workbench', name: 'Верстак', icon: 'assets/buildings/workbench_1.png', type: 'building' },
       furnace: { id: 'furnace', name: 'Горн', icon: 'assets/buildings/Bloomery_1.png', type: 'building' },
@@ -539,7 +543,7 @@
       for (let i = inventoryItems.length - 1; i >= 0; i--) {
         if (inventoryItems[i].count <= 0) inventoryItems.splice(i, 1);
       }
-      const craftedItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id] || (RESOURCE_NAMES[recipe.id] ? { id: recipe.id, name: RESOURCE_NAMES[recipe.id], icon: RESOURCE_ICONS[recipe.id] } : null);
+      const craftedItem = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id] || (RESOURCE_NAMES[recipe.id] ? { id: recipe.id, name: RESOURCE_NAMES[recipe.id], icon: RESOURCE_ICONS[recipe.id] } : null);
       if (!craftedItem) {
         showGameMessage('Ошибка: предмет не найден в базе крафта', 'damage');
         renderInventory();
@@ -547,6 +551,8 @@
       }
       if (TOOL_DEFINITIONS[recipe.id]) {
         inventoryItems.push({ ...craftedItem, count: 1, durability: 100, maxDurability: 100 });
+      } else if (WEAPON_DEFINITIONS[recipe.id]) {
+        inventoryItems.push({ ...craftedItem, count: 1 });
       } else {
         const overflow = addStackableItem(craftedItem, 1);
         if (overflow) {
@@ -705,6 +711,7 @@
     const DEV_CATEGORIES = [
       { id: 'resources', title: 'РЕСУРСЫ' },
       { id: 'tools', title: 'ИНСТРУМЕНТЫ' },
+      { id: 'weapons', title: 'ОРУЖИЕ' },
       { id: 'buildings', title: 'ПОСТРОЙКИ' }
     ];
     let activeDevCategory = 'resources';
@@ -717,6 +724,9 @@
       }
       if (categoryId === 'tools') {
         return Object.values(TOOL_DEFINITIONS).map(item => ({ ...item, category: 'tool' }));
+      }
+      if (categoryId === 'weapons') {
+        return Object.values(WEAPON_DEFINITIONS).map(item => ({ ...item, category: 'weapon' }));
       }
       if (categoryId === 'buildings') {
         return Object.values(BUILDING_DEFINITIONS).map(item => ({ ...item, category: 'building' }));
@@ -746,12 +756,13 @@
 
     function addDeveloperItem(item) {
       const isTool = item.category === 'tool';
-      if (isTool) {
+      const isWeapon = item.category === 'weapon';
+      if (isTool || isWeapon) {
         if (inventoryItems.length >= 16) {
           showGameMessage('Инвентарь заполнен', 'damage');
           return;
         }
-        inventoryItems.push({ ...item, count: 1, durability: 100, maxDurability: 100 });
+        inventoryItems.push({ ...item, count: 1, ...(isTool ? { durability: 100, maxDurability: 100 } : {}) });
       } else {
         const overflow = addStackableItem(item, 1);
         if (overflow) {
@@ -1718,8 +1729,10 @@
       const pigIndex = pigMobs.findIndex(pig => Math.hypot(pig.x - targetCenterX, pig.y - targetCenterY) < 46);
       if (pigIndex >= 0) {
         const pig = pigMobs[pigIndex];
-        pig.health = Math.max(0, (Number.isFinite(pig.health) ? pig.health : 30) - 5);
-        showGameMessage(`Удар кулаком: свинья −5 HP (${pig.health}/30).`, 'damage');
+        const selectedWeapon = quickSlots[selectedQuickSlot];
+        const pigDamage = WEAPON_DEFINITIONS[selectedWeapon?.id]?.damage || 5;
+        pig.health = Math.max(0, (Number.isFinite(pig.health) ? pig.health : 30) - pigDamage);
+        showGameMessage(`${selectedWeapon && WEAPON_DEFINITIONS[selectedWeapon.id] ? selectedWeapon.name : 'Удар кулаком'}: свинья −${pigDamage} HP (${pig.health}/30).`, 'damage');
         if (pig.health <= 0) {
           pig.element.remove();
           pigMobs.splice(pigIndex, 1);
@@ -1749,8 +1762,10 @@
       );
       if (banditIndex >= 0) {
         const bandit = banditMobs[banditIndex];
-        bandit.health = Math.max(0, (Number.isFinite(bandit.health) ? bandit.health : 100) - BANDIT_FIST_DAMAGE);
-        showGameMessage(`Удар кулаком: бандит −${BANDIT_FIST_DAMAGE} HP (${bandit.health}/100).`, 'damage');
+        const selectedWeapon = quickSlots[selectedQuickSlot];
+        const banditDamage = WEAPON_DEFINITIONS[selectedWeapon?.id]?.damage || BANDIT_FIST_DAMAGE;
+        bandit.health = Math.max(0, (Number.isFinite(bandit.health) ? bandit.health : 100) - banditDamage);
+        showGameMessage(`${selectedWeapon && WEAPON_DEFINITIONS[selectedWeapon.id] ? selectedWeapon.name : 'Удар кулаком'}: бандит −${banditDamage} HP (${bandit.health}/100).`, 'damage');
         if (bandit.health <= 0) {
           bandit.element.remove();
           banditMobs.splice(banditIndex, 1);
@@ -1990,7 +2005,9 @@
               { id: 'iron_axe', name: 'Железный топор', ingredients: { iron_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
               { id: 'iron_pickaxe', name: 'Железная кирка', ingredients: { iron_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' },
               { id: 'steel_axe', name: 'Стальной топор', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
-              { id: 'steel_pickaxe', name: 'Стальная кирка', ingredients: { steel_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' }
+              { id: 'steel_pickaxe', name: 'Стальная кирка', ingredients: { steel_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' },
+              { id: 'iron_sword', name: 'Железный меч', ingredients: { iron_ingot: 2, wood: 1 }, action: '⚔ СОЗДАТЬ' },
+              { id: 'steel_sword', name: 'Стальной меч', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚔ СОЗДАТЬ' }
             ];
 
         stationRecipes.forEach(recipe => {
