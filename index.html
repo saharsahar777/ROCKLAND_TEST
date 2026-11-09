@@ -1385,6 +1385,19 @@
       }
     }
 
+    function canKnockPlayerTo(nextWorldX, nextWorldY) {
+      const deltaX = nextWorldX - worldX;
+      const deltaY = nextWorldY - worldY;
+      const distance = Math.hypot(deltaX, deltaY);
+      const samples = Math.max(1, Math.ceil(distance / 8));
+      // Проверяем весь путь короткими шагами: отбрасывание не должно проталкивать ГГ сквозь препятствия.
+      for (let i = 1; i <= samples; i++) {
+        const t = i / samples;
+        if (collidesAt(worldX + deltaX * t, worldY + deltaY * t)) return false;
+      }
+      return true;
+    }
+
     function knockPlayerAwayFromBandit(bandit) {
       const playerX = worldPixelWidth / 2 + worldX;
       const playerY = worldPixelHeight / 2 + worldY;
@@ -1393,12 +1406,32 @@
       const length = Math.max(1, Math.hypot(dx, dy));
       dx /= length;
       dy /= length;
-      // Смещаем персонажа на одну клетку от бандита.
-      worldX += dx * BANDIT_KNOCKBACK_DISTANCE;
-      worldY += dy * BANDIT_KNOCKBACK_DISTANCE;
+
+      const distance = BANDIT_KNOCKBACK_DISTANCE;
+      const candidates = [
+        [dx * distance, dy * distance],
+        [dx * distance, 0],
+        [0, dy * distance],
+        [dx * distance * 0.7 - dy * distance * 0.7, dy * distance * 0.7 + dx * distance * 0.7],
+        [dx * distance * 0.7 + dy * distance * 0.7, dy * distance * 0.7 - dx * distance * 0.7]
+      ];
+      // Сначала пытаемся оттолкнуть строго от бандита; если там дерево или камень —
+      // пробуем безопасное смещение по диагонали/оси. Внутрь препятствия ГГ не переносим.
+      for (const [offsetX, offsetY] of candidates) {
+        const nextWorldX = worldX + offsetX;
+        const nextWorldY = worldY + offsetY;
+        if (!canKnockPlayerTo(nextWorldX, nextWorldY)) continue;
+        worldX = nextWorldX;
+        worldY = nextWorldY;
+        velocityX = 0;
+        velocityY = 0;
+        updateCamera();
+        return true;
+      }
+      // Если вокруг нет свободного пути, остаёмся на месте, а не застреваем в объекте.
       velocityX = 0;
       velocityY = 0;
-      updateCamera();
+      return false;
     }
 
     function knockBanditAwayFromPlayer(bandit) {
@@ -1662,8 +1695,12 @@
     }
 
     const HIT_HEALTH_COST = 2;
+    const PLAYER_ATTACK_COOLDOWN = 1.0;
+    let playerAttackCooldown = 0;
     let hitFeedbackTimer = 0;
     function performHit() {
+      if (playerAttackCooldown > 0) return;
+      playerAttackCooldown = PLAYER_ATTACK_COOLDOWN;
       const cellSize = 64;
       const centerX = worldPixelWidth / 2 + worldX;
       const centerY = worldPixelHeight / 2 + worldY;
@@ -2090,6 +2127,7 @@
 
       updatePigMobs(dt);
       updateBanditMobs(dt);
+      playerAttackCooldown = Math.max(0, playerAttackCooldown - dt);
 
       let inputX = (pressed.has('right') ? 1 : 0) - (pressed.has('left') ? 1 : 0);
       let inputY = (pressed.has('down') ? 1 : 0) - (pressed.has('up') ? 1 : 0);
