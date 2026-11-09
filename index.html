@@ -53,6 +53,7 @@
     .world-object.tree-1 { width: 64px; height: 128px; }
     .world-object.tree-2 { width: 128px; height: 64px; }
     .world-object.rock { width: 64px; height: 64px; }
+    .world-object.spring { width: 64px; height: 64px; }
     .workbench-marker {
       position:absolute; left:50%; bottom:-8px;
       width:64px; height:64px;
@@ -1003,7 +1004,8 @@
       tree1: 'assets/tree_1.png',
       tree2: 'assets/tree_2.png',
       rock1: 'assets/rock_1.png',
-      rock2: 'assets/rock_2.png'
+      rock2: 'assets/rock_2.png',
+      spring: 'assets/spring_1.png'
     };
     let worldMap = [];
     let objectMap = [];
@@ -1011,6 +1013,10 @@
     let objectHitRequired = [];
     let objectElements = [];
     let pigMobs = [];
+    const SPRING_MAX_SIPS = 3;
+    const SPRING_SIP_RESTORE = 20;
+    const SPRING_REGEN_MS = 60 * 1000;
+    let springState = null;
     const PIG_SPRITES = {
       left:  [1, 2, 3, 4].map(n => `assets/good_mob/pig_${n}.png`),
       right: [5, 6, 7, 8].map(n => `assets/good_mob/pig_${n}.png`),
@@ -1129,6 +1135,19 @@
         }
       }
 
+      // Выбираем одну свободную клетку каменистой почвы под единственный источник воды.
+      const springCandidates = [];
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < columns; col++) {
+          if (worldMap[row][col] === 3) springCandidates.push({ row, col });
+        }
+      }
+      // Если на каменистой почве пока нет свободной клетки, освобождаем одну подходящую клетку.
+      let springCell = springCandidates.find(({ row, col }) => {
+        const rockChance = Math.random();
+        return rockChance >= 0.20;
+      }) || springCandidates[0] || null;
+
       // Затем создаём отдельную таблицу объектов по значениям таблицы ландшафта.
       // Трава: дерево в каждой клетке. Каменистая земля: камень с вероятностью 20%.
       for (let row = 0; row < rows; row++) {
@@ -1171,6 +1190,22 @@
           objectElements[row][col] = objectCell;
           objectFragment.appendChild(objectCell);
         }
+      }
+
+      if (springCell) {
+        const { row, col } = springCell;
+        objectMap[row][col] = 'spring';
+        objectHitProgress[row][col] = 0;
+        objectHitRequired[row][col] = 0;
+        const springObjectCell = objectElements[row][col];
+        const springSprite = document.createElement('img');
+        springSprite.className = 'world-object spring';
+        springSprite.src = OBJECT_SPRITES.spring;
+        springSprite.alt = 'Источник воды';
+        springSprite.draggable = false;
+        springSprite.onerror = () => console.error(`Не удалось загрузить спрайт источника воды: ${springSprite.src}`);
+        springObjectCell.replaceChildren(springSprite);
+        springState = { row, col, sipsLeft: SPRING_MAX_SIPS, restoreAt: 0 };
       }
 
       terrainLayer.replaceChildren(terrainFragment);
@@ -1502,6 +1537,10 @@
         return;
       }
 
+      if (objectType === 'spring') {
+        showGameMessage('Источник воды нельзя разрушить.', 'damage');
+        return;
+      }
       const isBuilding = Boolean(BUILDING_DEFINITIONS[objectType]);
       const targetKind = isBuilding ? 'building' : (objectType.startsWith('tree') ? 'tree' : 'rock');
       const targetName = targetKind === 'tree' ? 'дереву'
@@ -1638,7 +1677,36 @@
       performHit();
     }
 
+    function drinkFromSpring() {
+      if (!springState) {
+        showGameMessage('В этом мире нет доступного источника воды.', 'damage');
+        return true;
+      }
+      const target = getPlacementTarget();
+      if (target.row !== springState.row || target.col !== springState.col) return false;
+
+      const now = Date.now();
+      if (springState.sipsLeft <= 0 && springState.restoreAt && now >= springState.restoreAt) {
+        springState.sipsLeft = SPRING_MAX_SIPS;
+        springState.restoreAt = 0;
+      }
+      if (springState.sipsLeft <= 0) {
+        const secondsLeft = Math.max(1, Math.ceil((springState.restoreAt - now) / 1000));
+        showGameMessage(`Источник восстанавливается. Осталось ${secondsLeft} сек.`, 'damage');
+        return true;
+      }
+
+      thirst = Math.min(MAX_THIRST, thirst + SPRING_SIP_RESTORE);
+      springState.sipsLeft -= 1;
+      if (springState.sipsLeft === 0) springState.restoreAt = now + SPRING_REGEN_MS;
+      updateStatusBars();
+      showGameMessage(`Вы выпили из источника. Жажда +${SPRING_SIP_RESTORE}. Осталось глотков: ${springState.sipsLeft}.`, 'resource');
+      markSaveDirty();
+      return true;
+    }
+
     function performEat() {
+      if (drinkFromSpring()) return;
       const selected = quickSlots[selectedQuickSlot];
       const effects = selected ? FOOD_EFFECTS[selected.id] : null;
       if (!effects) {
@@ -1657,6 +1725,10 @@
       const objectType = objectMap[target.row]?.[target.col];
       if (!objectType) {
         showGameMessage('Перед вами нет объекта для взаимодействия.', 'damage');
+        return;
+      }
+      if (objectType === 'spring') {
+        showGameMessage('Источник воды. Пить — кнопка F. Наполнение фляги появится позже.', 'resource');
         return;
       }
       if (objectType === 'workbench') {
@@ -1959,6 +2031,7 @@
           objects: objectMap.map(row => row.slice()),
           hitProgress: objectHitProgress.map(row => row.slice()),
           hitRequired: objectHitRequired.map(row => row.slice()),
+          spring: springState ? { ...springState } : null,
           mobs: pigMobs.map(({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }) => ({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }))
         },
         player: {
@@ -2020,9 +2093,9 @@
               sprite.src = BUILDING_DEFINITIONS[objectType].icon;
               sprite.alt = BUILDING_DEFINITIONS[objectType].name;
             } else {
-              sprite.className = `world-object ${objectType === 'tree1' ? 'tree-1' : objectType === 'tree2' ? 'tree-2' : 'rock'}`;
+              sprite.className = `world-object ${objectType === 'tree1' ? 'tree-1' : objectType === 'tree2' ? 'tree-2' : objectType === 'spring' ? 'spring' : 'rock'}`;
               sprite.src = OBJECT_SPRITES[objectType];
-              sprite.alt = '';
+              sprite.alt = objectType === 'spring' ? 'Источник воды' : '';
             }
             sprite.draggable = false;
             objectCell.appendChild(sprite);
@@ -2204,6 +2277,34 @@
       objectMap = state.world.objects.map(row => row.slice());
       objectHitProgress = state.world.hitProgress.map(row => row.slice());
       objectHitRequired = state.world.hitRequired.map(row => row.slice());
+      springState = state.world.spring ? { ...state.world.spring } : null;
+      if (!springState) {
+        for (let row = 0; row < worldRows && !springState; row++) {
+          for (let col = 0; col < worldColumns; col++) {
+            if (objectMap[row][col] === 'spring') {
+              springState = { row, col, sipsLeft: SPRING_MAX_SIPS, restoreAt: 0 };
+              break;
+            }
+          }
+        }
+      }
+      if (!springState) {
+        const candidates = [];
+        for (let row = 0; row < worldRows; row++) {
+          for (let col = 0; col < worldColumns; col++) {
+            if (worldMap[row][col] === 3 && (!objectMap[row][col] || objectMap[row][col] === 'rock1' || objectMap[row][col] === 'rock2')) {
+              candidates.push({ row, col });
+            }
+          }
+        }
+        if (candidates.length) {
+          const cell = candidates[Math.floor(Math.random() * candidates.length)];
+          objectMap[cell.row][cell.col] = 'spring';
+          objectHitProgress[cell.row][cell.col] = 0;
+          objectHitRequired[cell.row][cell.col] = 0;
+          springState = { ...cell, sipsLeft: SPRING_MAX_SIPS, restoreAt: 0 };
+        }
+      }
       inventoryItems.splice(0, inventoryItems.length, ...state.inventory.map(item => ({ ...item })));
       quickSlots.splice(0, quickSlots.length, ...state.player.quickIndexes.map(index => index >= 0 ? inventoryItems[index] || null : null));
       while (quickSlots.length < 4) quickSlots.push(null);
