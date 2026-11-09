@@ -71,7 +71,7 @@
     #placement-preview.valid { border-color:#35e65b; background:rgba(35,220,75,.28); }
 
     #actors-layer { position: absolute; inset: 0; pointer-events: none; }
-    .good-mob { position:absolute; width:64px; height:64px; transform:translate(-50%, -50%); object-fit:contain; image-rendering:pixelated; pointer-events:none; user-select:none; -webkit-user-drag:none; }
+    .good-mob, .evil-mob { position:absolute; width:64px; height:64px; transform:translate(-50%, -50%); object-fit:contain; image-rendering:pixelated; pointer-events:none; user-select:none; -webkit-user-drag:none; }
     #player {
       position: absolute; left: 0; top: 0; width: 64px; height: 64px;
       transform: translate(-50%, -50%); image-rendering: pixelated;
@@ -1013,6 +1013,7 @@
     let objectHitRequired = [];
     let objectElements = [];
     let pigMobs = [];
+    let banditMobs = [];
     const SPRING_MAX_SIPS = 3;
     const SPRING_SIP_RESTORE = 20;
     const SPRING_REGEN_MS = 60 * 1000;
@@ -1023,6 +1024,22 @@
       up:    [9, 10, 11, 12].map(n => `assets/good_mob/pig_${n}.png`),
       down:  [13, 14, 15, 16].map(n => `assets/good_mob/pig_${n}.png`)
     };
+    const BANDIT_SPRITES = {
+      up: ['assets/evil_mob/bandit_1.png', 'assets/evil_mob/bandit_2.png'],
+      down: ['assets/evil_mob/bandit_3.png', 'assets/evil_mob/bandit_4.png'],
+      right: ['assets/evil_mob/bandit_5.png', 'assets/evil_mob/bandit_6.png'],
+      left: ['assets/evil_mob/bandit_7.png', 'assets/evil_mob/bandit_8.png']
+    };
+    const BANDIT_COUNT = 3;
+    const BANDIT_DETECTION_RANGE = 5 * 64;
+    const BANDIT_SPEED = 118;
+    const BANDIT_FRAME_DURATION = 0.16;
+    const BANDIT_ATTACK_RANGE = 48;
+    const BANDIT_ATTACK_WINDUP = 0.2;
+    const BANDIT_ATTACK_COOLDOWN = 1.0;
+    const BANDIT_ATTACK_DAMAGE = 15;
+    const BANDIT_KNOCKBACK_DISTANCE = 64;
+    const BANDIT_FIST_DAMAGE = 5;
     const PIG_SPEED = 34;
     const PIG_FRAME_DURATION = 0.18;
     let worldColumns = 0;
@@ -1214,6 +1231,7 @@
       objectsLayer.appendChild(player);
       objectsLayer.appendChild(placementPreview);
       pigMobs = [];
+      banditMobs = [];
       for (const layer of [terrainLayer, objectsLayer]) {
         layer.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
         layer.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
@@ -1244,6 +1262,7 @@
       velocityX = 0;
       velocityY = 0;
       spawnPigMobs();
+      spawnBanditMobs();
       updateCamera();
     }
 
@@ -1310,6 +1329,162 @@
         pig.element.style.top = `${pig.y}px`;
         pig.element.style.zIndex = String(Math.floor(pig.y + 24));
       }
+    }
+
+    function isBanditCellFree(row, col) {
+      return row >= 1 && col >= 1 && row < worldRows - 1 && col < worldColumns - 1 &&
+        (worldMap[row][col] === 1 || worldMap[row][col] === 2) &&
+        objectMap[row][col] === null;
+    }
+
+    function spawnBanditMobs() {
+      banditMobs = [];
+      const playerX = worldPixelWidth / 2 + worldX;
+      const playerY = worldPixelHeight / 2 + worldY;
+      const candidates = [];
+      for (let row = 1; row < worldRows - 1; row++) {
+        for (let col = 1; col < worldColumns - 1; col++) {
+          if (!isBanditCellFree(row, col)) continue;
+          const x = (col + 0.5) * 64;
+          const y = (row + 0.5) * 64;
+          if (Math.hypot(x - playerX, y - playerY) >= 8 * 64) candidates.push({ x, y });
+        }
+      }
+      // Перемешиваем кандидатов, чтобы три бандита появлялись в разных случайных местах.
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      for (const cell of candidates) {
+        if (banditMobs.length >= BANDIT_COUNT) break;
+        if (banditMobs.some(b => Math.hypot(b.x - cell.x, b.y - cell.y) < 4 * 64)) continue;
+        const bandit = {
+          x: cell.x, y: cell.y, health: 100,
+          direction: 'down', frame: 0, frameTimer: 0,
+          alerted: false, element: document.createElement('img')
+        };
+        bandit.element.className = 'evil-mob';
+        bandit.element.alt = 'Бандит';
+        bandit.element.draggable = false;
+        bandit.element.src = BANDIT_SPRITES.down[0];
+        bandit.element.onerror = () => console.error(`Не удалось загрузить спрайт бандита: ${bandit.element.src}`);
+        objectsLayer.appendChild(bandit.element);
+        banditMobs.push(bandit);
+      }
+      updateBanditSpritesAndPositions();
+      if (banditMobs.length < BANDIT_COUNT) {
+        console.warn(`Создано бандитов: ${banditMobs.length} из ${BANDIT_COUNT}. Недостаточно свободных клеток на удалении от игрока.`);
+      }
+    }
+
+    function updateBanditSpritesAndPositions() {
+      for (const bandit of banditMobs) {
+        bandit.element.style.left = `${bandit.x}px`;
+        bandit.element.style.top = `${bandit.y}px`;
+        bandit.element.style.zIndex = String(Math.floor(bandit.y + 28));
+      }
+    }
+
+    function knockPlayerAwayFromBandit(bandit) {
+      const playerX = worldPixelWidth / 2 + worldX;
+      const playerY = worldPixelHeight / 2 + worldY;
+      let dx = playerX - bandit.x;
+      let dy = playerY - bandit.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      dx /= length;
+      dy /= length;
+      // Смещаем персонажа на одну клетку от бандита.
+      worldX += dx * BANDIT_KNOCKBACK_DISTANCE;
+      worldY += dy * BANDIT_KNOCKBACK_DISTANCE;
+      velocityX = 0;
+      velocityY = 0;
+      updateCamera();
+    }
+
+    function knockBanditAwayFromPlayer(bandit) {
+      const playerX = worldPixelWidth / 2 + worldX;
+      const playerY = worldPixelHeight / 2 + worldY;
+      let dx = bandit.x - playerX;
+      let dy = bandit.y - playerY;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      dx /= length;
+      dy /= length;
+      const nextX = bandit.x + dx * BANDIT_KNOCKBACK_DISTANCE;
+      const nextY = bandit.y + dy * BANDIT_KNOCKBACK_DISTANCE;
+      const col = Math.floor(nextX / 64);
+      const row = Math.floor(nextY / 64);
+      if (isBanditCellFree(row, col)) {
+        bandit.x = nextX;
+        bandit.y = nextY;
+      }
+    }
+
+    function updateBanditMobs(dt) {
+      if (!activeWorldId || !banditMobs.length || dt <= 0 || isPlayerDead) return;
+      const playerX = worldPixelWidth / 2 + worldX;
+      const playerY = worldPixelHeight / 2 + worldY;
+      for (const bandit of banditMobs) {
+        bandit.attackCooldown = Math.max(0, (bandit.attackCooldown || 0) - dt);
+        const dx = playerX - bandit.x;
+        const dy = playerY - bandit.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance > BANDIT_DETECTION_RANGE) {
+          bandit.alerted = false;
+          bandit.attackWindup = 0;
+          bandit.frame = 0;
+          bandit.element.src = BANDIT_SPRITES[bandit.direction][0];
+          continue;
+        }
+        bandit.alerted = true;
+        if (distance > BANDIT_ATTACK_RANGE) {
+          bandit.attackWindup = 0;
+          const step = Math.min(distance - BANDIT_ATTACK_RANGE + 2, BANDIT_SPEED * dt);
+          const nx = bandit.x + dx / distance * step;
+          const ny = bandit.y + dy / distance * step;
+          const col = Math.floor(nx / 64);
+          const row = Math.floor(ny / 64);
+          if (isBanditCellFree(row, col)) {
+            bandit.x = nx;
+            bandit.y = ny;
+          } else {
+            const xCol = Math.floor(nx / 64), currentRow = Math.floor(bandit.y / 64);
+            const yRow = Math.floor(ny / 64), currentCol = Math.floor(bandit.x / 64);
+            if (isBanditCellFree(currentRow, xCol)) bandit.x = nx;
+            else if (isBanditCellFree(yRow, currentCol)) bandit.y = ny;
+          }
+          bandit.direction = Math.abs(dx) > Math.abs(dy)
+            ? (dx >= 0 ? 'right' : 'left')
+            : (dy >= 0 ? 'down' : 'up');
+          bandit.frameTimer += dt;
+          if (bandit.frameTimer >= BANDIT_FRAME_DURATION) {
+            bandit.frameTimer %= BANDIT_FRAME_DURATION;
+            bandit.frame = (bandit.frame + 1) % 2;
+          }
+        } else {
+          bandit.frame = 0;
+          bandit.direction = Math.abs(dx) > Math.abs(dy)
+            ? (dx >= 0 ? 'right' : 'left')
+            : (dy >= 0 ? 'down' : 'up');
+          if (bandit.attackCooldown <= 0) {
+            if (!bandit.attackWindup) bandit.attackWindup = BANDIT_ATTACK_WINDUP;
+            bandit.attackWindup -= dt;
+            if (bandit.attackWindup <= 0) {
+              // Повторно проверяем дистанцию непосредственно в момент удара.
+              const currentPlayerX = worldPixelWidth / 2 + worldX;
+              const currentPlayerY = worldPixelHeight / 2 + worldY;
+              if (Math.hypot(currentPlayerX - bandit.x, currentPlayerY - bandit.y) <= BANDIT_ATTACK_RANGE + 8) {
+                applyDamage(BANDIT_ATTACK_DAMAGE, `Бандит ударил вас: −${BANDIT_ATTACK_DAMAGE} HP.`);
+                if (!isPlayerDead) knockPlayerAwayFromBandit(bandit);
+              }
+              bandit.attackWindup = 0;
+              bandit.attackCooldown = BANDIT_ATTACK_COOLDOWN;
+              markSaveDirty();
+            }
+          }
+        }
+        bandit.element.src = BANDIT_SPRITES[bandit.direction][bandit.frame];
+      }
+      updateBanditSpritesAndPositions();
     }
 
     function choosePigTarget(pig) {
@@ -1528,6 +1703,28 @@
           pig.waitTimer = 0;
           updatePigSpritesAndPositions();
         }
+        markSaveDirty();
+        return;
+      }
+
+      const banditIndex = banditMobs.findIndex(bandit =>
+        Math.hypot(bandit.x - targetCenterX, bandit.y - targetCenterY) < 48
+      );
+      if (banditIndex >= 0) {
+        const bandit = banditMobs[banditIndex];
+        bandit.health = Math.max(0, (Number.isFinite(bandit.health) ? bandit.health : 100) - BANDIT_FIST_DAMAGE);
+        showGameMessage(`Удар кулаком: бандит −${BANDIT_FIST_DAMAGE} HP (${bandit.health}/100).`, 'damage');
+        if (bandit.health <= 0) {
+          bandit.element.remove();
+          banditMobs.splice(banditIndex, 1);
+          showGameMessage('Бандит повержен.', 'resource');
+        } else {
+          knockBanditAwayFromPlayer(bandit);
+          bandit.alerted = true;
+          bandit.attackWindup = 0;
+          bandit.attackCooldown = Math.max(bandit.attackCooldown || 0, BANDIT_ATTACK_COOLDOWN);
+        }
+        updateBanditSpritesAndPositions();
         markSaveDirty();
         return;
       }
@@ -1892,6 +2089,7 @@
       }
 
       updatePigMobs(dt);
+      updateBanditMobs(dt);
 
       let inputX = (pressed.has('right') ? 1 : 0) - (pressed.has('left') ? 1 : 0);
       let inputY = (pressed.has('down') ? 1 : 0) - (pressed.has('up') ? 1 : 0);
@@ -2032,7 +2230,8 @@
           hitProgress: objectHitProgress.map(row => row.slice()),
           hitRequired: objectHitRequired.map(row => row.slice()),
           spring: springState ? { ...springState } : null,
-          mobs: pigMobs.map(({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }) => ({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }))
+          mobs: pigMobs.map(({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer }) => ({ x, y, homeX, homeY, roamRadius, targetX, targetY, direction, frame, frameTimer, waitTimer, health, fleeTimer })),
+          bandits: banditMobs.map(({ x, y, health, direction, frame, frameTimer, alerted, attackWindup, attackCooldown }) => ({ x, y, health, direction, frame, frameTimer, alerted, attackWindup, attackCooldown }))
         },
         player: {
           x: worldX, y: worldY, health, hunger,
@@ -2360,6 +2559,20 @@
         });
         updatePigSpritesAndPositions();
       } else { spawnPigMobs(); }
+      banditMobs = [];
+      if (Array.isArray(state.world.bandits) && state.world.bandits.length) {
+        banditMobs = state.world.bandits.map(data => {
+          const bandit = { health: 100, direction: 'down', frame: 0, frameTimer: 0, alerted: false, attackWindup: 0, attackCooldown: 0, ...data, element: document.createElement('img') };
+          bandit.element.className = 'evil-mob';
+          bandit.element.alt = 'Бандит';
+          bandit.element.draggable = false;
+          bandit.element.src = (BANDIT_SPRITES[bandit.direction] || BANDIT_SPRITES.down)[bandit.frame % 2];
+          bandit.element.onerror = () => console.error(`Не удалось загрузить спрайт бандита: ${bandit.element.src}`);
+          objectsLayer.appendChild(bandit.element);
+          return bandit;
+        });
+        updateBanditSpritesAndPositions();
+      } else { spawnBanditMobs(); }
       currentSprite = '';
       setPlayerSprite(facing, 0);
       saveDirty = false;
@@ -2428,7 +2641,7 @@
     // ------------------ КОНЕЦ СИСТЕМЫ СОХРАНЕНИЙ ------------------
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(PIG_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(PIG_SPRITES).flat(), ...Object.values(BANDIT_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
