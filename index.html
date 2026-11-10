@@ -336,7 +336,49 @@
     #world-name-dialog { display:none; margin-top:14px; padding:12px; background:#39463b; border:1px solid #aab5a9; }
     #world-name-dialog.open { display:block; }
     #world-name-input { width:100%; padding:10px; margin:8px 0; font:12px Arial,sans-serif; }
-  </style>
+  
+    .floating-effect-number {
+      position: absolute;
+      z-index: 100000;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      font-family: 'PressStart2P', monospace;
+      font-size: 13px;
+      line-height: 1;
+      font-weight: bold;
+      white-space: nowrap;
+      text-shadow: 2px 2px 0 #171717, -1px -1px 0 #171717, 1px -1px 0 #171717, -1px 1px 0 #171717;
+      animation: floating-number-rise 850ms ease-out forwards;
+    }
+    .floating-effect-number.negative { color: #ff4545; }
+    .floating-effect-number.positive { color: #45f06b; }
+    @keyframes floating-number-rise {
+      0% { opacity: 0; transform: translate(-50%, 0) scale(.82); }
+      12% { opacity: 1; }
+      72% { opacity: 1; transform: translate(-50%, -30px) scale(1.08); }
+      100% { opacity: 0; transform: translate(-50%, -48px) scale(1); }
+    }
+
+    .hit-effect-sprite {
+      position: absolute;
+      z-index: 4;
+      width: 96px;
+      height: 96px;
+      object-fit: contain;
+      image-rendering: pixelated;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      transform: translate(-50%, -50%) scale(.82);
+      opacity: 1;
+      animation: hit-effect-fade 260ms ease-out forwards;
+    }
+    @keyframes hit-effect-fade {
+      0% { opacity: 1; transform: translate(-50%, -50%) scale(.82); }
+      35% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(1.04); }
+    }
+</style>
 </head>
 <body>
 
@@ -497,6 +539,47 @@
     const messageLog = document.getElementById('message-log');
     const MESSAGE_LIFETIME = 2600;
     const MESSAGE_LIMIT = 4;
+    function showFloatingNumber(value, kind, targetElement = player) {
+      if (!targetElement || !targetElement.isConnected) return;
+      const gameRect = game.getBoundingClientRect();
+      const targetRect = targetElement.getBoundingClientRect();
+      if (!targetRect.width || !targetRect.height) return;
+      const number = document.createElement('div');
+      number.className = `floating-effect-number ${kind === 'negative' ? 'negative' : 'positive'}`;
+      number.textContent = `${value > 0 ? '+' : ''}${value}`;
+      number.style.left = `${targetRect.left - gameRect.left + targetRect.width / 2}px`;
+      number.style.top = `${targetRect.top - gameRect.top + Math.min(18, targetRect.height * 0.2)}px`;
+      game.appendChild(number);
+      number.addEventListener('animationend', () => number.remove(), { once: true });
+    }
+
+    const HIT_EFFECT_SPRITES = {
+      right: 'assets/hit_1.png',
+      left: 'assets/hit_2.png',
+      up: 'assets/hit_3.png',
+      down: 'assets/hit_4.png'
+    };
+
+    function showHitEffect(attackerElement, direction) {
+      if (!attackerElement || !attackerElement.isConnected) return;
+      const gameRect = game.getBoundingClientRect();
+      const attackerRect = attackerElement.getBoundingClientRect();
+      if (!attackerRect.width || !attackerRect.height) return;
+      const effect = document.createElement('img');
+      effect.className = 'hit-effect-sprite';
+      effect.src = HIT_EFFECT_SPRITES[direction] || HIT_EFFECT_SPRITES.down;
+      effect.alt = '';
+      effect.draggable = false;
+      effect.style.left = `${attackerRect.left - gameRect.left + attackerRect.width / 2}px`;
+      effect.style.top = `${attackerRect.top - gameRect.top + attackerRect.height / 2}px`;
+      effect.onerror = () => {
+        console.error(`Не удалось загрузить спрайт удара: ${effect.src}`);
+        effect.remove();
+      };
+      game.appendChild(effect);
+      effect.addEventListener('animationend', () => effect.remove(), { once: true });
+    }
+
     function showGameMessage(text, type) {
       const message = document.createElement('div');
       message.className = `game-message ${type}`;
@@ -552,7 +635,7 @@
       if (TOOL_DEFINITIONS[recipe.id]) {
         inventoryItems.push({ ...craftedItem, count: 1, durability: 100, maxDurability: 100 });
       } else if (WEAPON_DEFINITIONS[recipe.id]) {
-        inventoryItems.push({ ...craftedItem, count: 1 });
+        inventoryItems.push({ ...craftedItem, count: 1, durability: 100, maxDurability: 100 });
       } else {
         const overflow = addStackableItem(craftedItem, 1);
         if (overflow) {
@@ -582,7 +665,7 @@
           title.className = 'craft-recipe-title';
           title.textContent = recipe.name;
 
-          const recipeItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+          const recipeItem = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
           if (recipeItem?.icon) {
             const recipeIcon = document.createElement('img');
             recipeIcon.src = recipeItem.icon;
@@ -651,7 +734,7 @@
         const title = document.createElement('div');
         title.className = 'craft-recipe-title';
         title.textContent = recipe.name;
-        const recipeItem = TOOL_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+        const recipeItem = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
         if (recipeItem?.icon) {
           const icon = document.createElement('img');
           icon.src = recipeItem.icon;
@@ -762,7 +845,7 @@
           showGameMessage('Инвентарь заполнен', 'damage');
           return;
         }
-        inventoryItems.push({ ...item, count: 1, ...(isTool ? { durability: 100, maxDurability: 100 } : {}) });
+        inventoryItems.push({ ...item, count: 1, ...((isTool || isWeapon) ? { durability: 100, maxDurability: 100 } : {}) });
       } else {
         const overflow = addStackableItem(item, 1);
         if (overflow) {
@@ -926,7 +1009,9 @@
 
     function applyDamage(amount, message) {
       if (isPlayerDead || health <= 0) return;
+      const actualDamage = Math.min(health, amount);
       health = Math.max(0, health - amount);
+      if (actualDamage > 0) showFloatingNumber(-actualDamage, 'negative', player);
       updateStatusBars();
       markSaveDirty();
       if (message) showGameMessage(message, 'damage');
@@ -1517,6 +1602,7 @@
               const currentPlayerX = worldPixelWidth / 2 + worldX;
               const currentPlayerY = worldPixelHeight / 2 + worldY;
               if (Math.hypot(currentPlayerX - bandit.x, currentPlayerY - bandit.y) <= BANDIT_ATTACK_RANGE + 8) {
+                showHitEffect(bandit.element, bandit.direction);
                 applyDamage(BANDIT_ATTACK_DAMAGE, `Бандит ударил вас: −${BANDIT_ATTACK_DAMAGE} HP.`);
                 if (!isPlayerDead) knockPlayerAwayFromBandit(bandit);
               }
@@ -1705,6 +1791,22 @@
       markSaveDirty();
     }
 
+    function wearWeapon(weapon) {
+      if (!weapon || !WEAPON_DEFINITIONS[weapon.id] || !Number.isFinite(weapon.durability)) return;
+      weapon.durability = Math.max(0, weapon.durability - 1);
+      if (weapon.durability === 0) {
+        const itemIndex = inventoryItems.indexOf(weapon);
+        if (itemIndex >= 0) inventoryItems.splice(itemIndex, 1);
+        for (let slotIndex = 0; slotIndex < quickSlots.length; slotIndex++) {
+          if (quickSlots[slotIndex] === weapon) quickSlots[slotIndex] = null;
+        }
+        showGameMessage(`${weapon.name} сломался.`, 'damage');
+      } else if (weapon.durability <= weapon.maxDurability * 0.2) {
+        showGameMessage(`Прочность ${weapon.name}: ${weapon.durability}/${weapon.maxDurability}`, 'damage');
+      }
+      renderInventory();
+    }
+
     const HIT_HEALTH_COST = 2;
     const PLAYER_ATTACK_COOLDOWN = 1.0;
     let playerAttackCooldown = 0;
@@ -1712,6 +1814,7 @@
     function performHit() {
       if (playerAttackCooldown > 0) return;
       playerAttackCooldown = PLAYER_ATTACK_COOLDOWN;
+      showHitEffect(player, facing);
       const cellSize = 64;
       const centerX = worldPixelWidth / 2 + worldX;
       const centerY = worldPixelHeight / 2 + worldY;
@@ -1731,7 +1834,9 @@
         const pig = pigMobs[pigIndex];
         const selectedWeapon = quickSlots[selectedQuickSlot];
         const pigDamage = WEAPON_DEFINITIONS[selectedWeapon?.id]?.damage || 5;
+        if (WEAPON_DEFINITIONS[selectedWeapon?.id]) wearWeapon(selectedWeapon);
         pig.health = Math.max(0, (Number.isFinite(pig.health) ? pig.health : 30) - pigDamage);
+        showFloatingNumber(-pigDamage, 'negative', pig.element);
         showGameMessage(`${selectedWeapon && WEAPON_DEFINITIONS[selectedWeapon.id] ? selectedWeapon.name : 'Удар кулаком'}: свинья −${pigDamage} HP (${pig.health}/30).`, 'damage');
         if (pig.health <= 0) {
           pig.element.remove();
@@ -1764,7 +1869,9 @@
         const bandit = banditMobs[banditIndex];
         const selectedWeapon = quickSlots[selectedQuickSlot];
         const banditDamage = WEAPON_DEFINITIONS[selectedWeapon?.id]?.damage || BANDIT_FIST_DAMAGE;
+        if (WEAPON_DEFINITIONS[selectedWeapon?.id]) wearWeapon(selectedWeapon);
         bandit.health = Math.max(0, (Number.isFinite(bandit.health) ? bandit.health : 100) - banditDamage);
+        showFloatingNumber(-banditDamage, 'negative', bandit.element);
         showGameMessage(`${selectedWeapon && WEAPON_DEFINITIONS[selectedWeapon.id] ? selectedWeapon.name : 'Удар кулаком'}: бандит −${banditDamage} HP (${bandit.health}/100).`, 'damage');
         if (bandit.health <= 0) {
           bandit.element.remove();
@@ -1838,6 +1945,7 @@
         const amount = isBuilding ? 1 : (correctTool ? correctTool.yield : 1);
         const resourceId = targetKind === 'rock' ? 'stone' : 'wood';
         addResource(resourceId, amount);
+        showFloatingNumber(amount, 'positive', objectElements[row]?.[col] || player);
         const destroyedName = targetKind === 'tree' ? 'Дерево' : targetKind === 'rock' ? 'Камень' : BUILDING_DEFINITIONS[objectType].name;
         showGameMessage(`${destroyedName} разрушен.`, 'resource');
         showGameMessage(`Получено: ${RESOURCE_NAMES[resourceId]} +${amount}.`, 'resource');
@@ -1877,8 +1985,12 @@
       }
 
       itemToConsume.count -= 1;
+      const hungerRestored = Math.min(effects.hunger, MAX_HUNGER - hunger);
+      const healthRestored = Math.min(effects.health, MAX_HEALTH - health);
       hunger = Math.min(MAX_HUNGER, hunger + effects.hunger);
       health = Math.min(MAX_HEALTH, health + effects.health);
+      if (healthRestored > 0) showFloatingNumber(healthRestored, 'positive', player);
+      if (hungerRestored > 0) showFloatingNumber(hungerRestored, 'positive', player);
 
       if (itemToConsume.count <= 0) {
         const itemIndex = inventoryItems.indexOf(itemToConsume);
@@ -2015,7 +2127,7 @@
           card.className = 'craft-recipe';
           const title = document.createElement('div');
           title.className = 'craft-recipe-title';
-          const resultDefinition = TOOL_DEFINITIONS[recipe.id];
+          const resultDefinition = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
           const resultIcon = document.createElement('img');
           resultIcon.src = resultDefinition?.icon || RESOURCE_ICONS[recipe.id];
           resultIcon.alt = recipe.name;
@@ -2696,7 +2808,7 @@
     // ------------------ КОНЕЦ СИСТЕМЫ СОХРАНЕНИЙ ------------------
 
     // Предзагружаем графику, чтобы смена кадров не мигала.
-    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(PIG_SPRITES).flat(), ...Object.values(BANDIT_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
+    [...Object.values(TILE_TEXTURES), ...Object.values(PLAYER_SPRITES).flat(), ...Object.values(PIG_SPRITES).flat(), ...Object.values(BANDIT_SPRITES).flat(), ...Object.values(OBJECT_SPRITES), ...Object.values(TOOL_DEFINITIONS).map(tool => tool.icon), ...Object.values(WEAPON_DEFINITIONS).map(weapon => weapon.icon), ...Object.values(RESOURCE_ICONS)].forEach((src) => {
       const image = new Image();
       image.onerror = () => console.error(`Не удалось загрузить изображение: ${src}`);
       image.src = src;
