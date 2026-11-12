@@ -596,7 +596,9 @@
     const SIMPLE_CRAFT_RECIPES = [
       { id: 'stone_pickaxe', name: 'Каменная кирка', ingredients: { wood: 1, stone: 1 } },
       { id: 'stone_axe', name: 'Каменный топор', ingredients: { wood: 1, stone: 1 } },
-      { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } },
+      { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } }
+    ];
+    const WORKBENCH_RECIPES = [
       { id: 'cloth', name: 'Ткань', ingredients: { wool: 3 } }
     ];
     const WORKSHOP_RECIPES = [
@@ -722,6 +724,7 @@
       }
 
       addSection('ПРОСТОЙ КРАФТ', SIMPLE_CRAFT_RECIPES);
+      addSection('РЕЦЕПТЫ ВЕРСТАКА', WORKBENCH_RECIPES);
       addSection('МАСТЕРСКИЕ ОБЪЕКТЫ', WORKSHOP_RECIPES);
     }
 
