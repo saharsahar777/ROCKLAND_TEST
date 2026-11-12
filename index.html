@@ -1883,7 +1883,36 @@
         if (bandit.health <= 0) {
           bandit.element.remove();
           banditMobs.splice(banditIndex, 1);
-          showGameMessage('Бандит повержен.', 'resource');
+
+          // Независимые броски добычи: оба предмета могут выпасть одновременно.
+          const droppedLoot = [];
+
+          if (Math.random() < 0.50) {
+            addResource('cloth', 1);
+            droppedLoot.push('Ткань ×1');
+          }
+
+          if (Math.random() < 0.01) {
+            if (inventoryItems.length < 16) {
+              const dagger = {
+                ...WEAPON_DEFINITIONS.dagger,
+                count: 1,
+                durability: 100,
+                maxDurability: 100
+              };
+              inventoryItems.push(dagger);
+              renderInventory();
+              droppedLoot.push('Кинжал ×1');
+            } else {
+              showGameMessage('Кинжал выпал, но инвентарь заполнен!', 'damage');
+            }
+          }
+
+          if (droppedLoot.length) {
+            showGameMessage(`Бандит повержен. Добыча: ${droppedLoot.join(', ')}.`, 'resource');
+          } else {
+            showGameMessage('Бандит повержен. Ничего не выпало.', 'resource');
+          }
         } else {
           knockBanditAwayFromPlayer(bandit);
           bandit.alerted = true;
