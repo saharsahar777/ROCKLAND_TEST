@@ -505,8 +505,8 @@
     const SAVE_INTERVAL_MS = 60000;
     const SAVE_DB_NAME = 'RockLandSaveDB';
     const SAVE_DB_VERSION = 1;
-    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток', raw_pork: 'Сырая свинина', cooked_pork: 'Жареная свинина' };
-    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png', raw_pork: 'assets/food/pork_1.png', cooked_pork: 'assets/food/pork_2.png' };
+    const RESOURCE_NAMES = { wood: 'Древесина', stone: 'Камень', coal: 'Уголь', iron_ore: 'Железная руда', iron_ingot: 'Железный слиток', steel_ingot: 'Стальной слиток', raw_pork: 'Сырая свинина', cooked_pork: 'Жареная свинина', cloth: 'Ткань', dagger: 'Кинжал' };
+    const RESOURCE_ICONS = { wood: 'assets/wood_1.png', stone: 'assets/stone_1.png', coal: 'assets/coal_1.png', iron_ore: 'assets/iron_ore_1.png', iron_ingot: 'assets/iron_ingot_1.png', steel_ingot: 'assets/steel_ingot_1.png', raw_pork: 'assets/food/pork_1.png', cooked_pork: 'assets/food/pork_2.png', cloth: 'assets/cloth_1.png', dagger: 'assets/tools/dagger_1.png' };
     // Инструменты и оружие имеют индивидуальную прочность: 100 единиц при создании.
     const TOOL_DEFINITIONS = {
       stone_axe: { id: 'stone_axe', name: 'Каменный топор', toolFor: 'tree', tier: 1, yield: 1, icon: 'assets/tools/axe_1.png' },
@@ -518,7 +518,8 @@
     };
     const WEAPON_DEFINITIONS = {
       iron_sword: { id: 'iron_sword', name: 'Железный меч', damage: 20, icon: 'assets/tools/iron_sword_1.png', category: 'weapon' },
-      steel_sword: { id: 'steel_sword', name: 'Стальной меч', damage: 30, icon: 'assets/tools/steel_sword_1.png', category: 'weapon' }
+      steel_sword: { id: 'steel_sword', name: 'Стальной меч', damage: 30, icon: 'assets/tools/steel_sword_1.png', category: 'weapon' },
+      dagger: { id: 'dagger', name: 'Кинжал', damage: 15, icon: 'assets/tools/dagger_1.png', category: 'weapon' }
     };
     const BUILDING_DEFINITIONS = {
       workbench: { id: 'workbench', name: 'Верстак', icon: 'assets/buildings/workbench_1.png', type: 'building' },
@@ -595,7 +596,8 @@
     const SIMPLE_CRAFT_RECIPES = [
       { id: 'stone_pickaxe', name: 'Каменная кирка', ingredients: { wood: 1, stone: 1 } },
       { id: 'stone_axe', name: 'Каменный топор', ingredients: { wood: 1, stone: 1 } },
-      { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } }
+      { id: 'workbench', name: 'Верстак', ingredients: { wood: 5 } },
+      { id: 'cloth', name: 'Ткань', ingredients: { wool: 3 } }
     ];
     const WORKSHOP_RECIPES = [
       { id: 'furnace', name: 'Горн', ingredients: { stone: 6, wood: 2, coal: 2 } },
@@ -665,7 +667,7 @@
           title.className = 'craft-recipe-title';
           title.textContent = recipe.name;
 
-          const recipeItem = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id];
+          const recipeItem = TOOL_DEFINITIONS[recipe.id] || WEAPON_DEFINITIONS[recipe.id] || BUILDING_DEFINITIONS[recipe.id] || (RESOURCE_NAMES[recipe.id] ? { icon: RESOURCE_ICONS[recipe.id] } : null);
           if (recipeItem?.icon) {
             const recipeIcon = document.createElement('img');
             recipeIcon.src = recipeItem.icon;
@@ -695,12 +697,14 @@
             }
             const ingredient = document.createElement('div');
             ingredient.className = 'craft-ingredient';
-            const image = document.createElement('img');
-            image.src = RESOURCE_ICONS[id];
-            image.alt = RESOURCE_NAMES[id];
-            ingredient.appendChild(image);
+            if (RESOURCE_ICONS[id]) {
+              const image = document.createElement('img');
+              image.src = RESOURCE_ICONS[id];
+              image.alt = RESOURCE_NAMES[id] || id;
+              ingredient.appendChild(image);
+            }
             const quantity = document.createElement('span');
-            quantity.textContent = `x${amount}`;
+            quantity.textContent = `${RESOURCE_NAMES[id] || (id === 'wool' ? 'Шерсть' : id)} x${amount}`;
             ingredient.appendChild(quantity);
             body.appendChild(ingredient);
           });
@@ -801,7 +805,7 @@
 
     function getDevItems(categoryId) {
       if (categoryId === 'resources') {
-        return Object.keys(RESOURCE_NAMES).map(id => ({
+        return Object.keys(RESOURCE_NAMES).filter(id => id !== 'dagger').map(id => ({
           id, name: RESOURCE_NAMES[id], icon: RESOURCE_ICONS[id], category: 'resource'
         }));
       }
@@ -2119,7 +2123,8 @@
               { id: 'steel_axe', name: 'Стальной топор', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚒ СОЗДАТЬ' },
               { id: 'steel_pickaxe', name: 'Стальная кирка', ingredients: { steel_ingot: 3, wood: 1 }, action: '⚒ СОЗДАТЬ' },
               { id: 'iron_sword', name: 'Железный меч', ingredients: { iron_ingot: 2, wood: 1 }, action: '⚔ СОЗДАТЬ' },
-              { id: 'steel_sword', name: 'Стальной меч', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚔ СОЗДАТЬ' }
+              { id: 'steel_sword', name: 'Стальной меч', ingredients: { steel_ingot: 2, wood: 1 }, action: '⚔ СОЗДАТЬ' },
+              { id: 'dagger', name: 'Кинжал', ingredients: { steel_ingot: 1, wood: 1 }, action: '⚔ СОЗДАТЬ' }
             ];
 
         stationRecipes.forEach(recipe => {
@@ -2146,12 +2151,14 @@
             }
             const ingredient = document.createElement('div');
             ingredient.className = 'craft-ingredient';
-            const image = document.createElement('img');
-            image.src = RESOURCE_ICONS[id];
-            image.alt = RESOURCE_NAMES[id];
-            ingredient.appendChild(image);
+            if (RESOURCE_ICONS[id]) {
+              const image = document.createElement('img');
+              image.src = RESOURCE_ICONS[id];
+              image.alt = RESOURCE_NAMES[id] || id;
+              ingredient.appendChild(image);
+            }
             const quantity = document.createElement('span');
-            quantity.textContent = `x${amount}`;
+            quantity.textContent = `${RESOURCE_NAMES[id] || (id === 'wool' ? 'Шерсть' : id)} x${amount}`;
             ingredient.appendChild(quantity);
             body.appendChild(ingredient);
           });
